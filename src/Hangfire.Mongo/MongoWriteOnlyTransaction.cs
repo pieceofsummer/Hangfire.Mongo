@@ -25,10 +25,10 @@ namespace Hangfire.Mongo
         public MongoWriteOnlyTransaction(HangfireDbContext connection, PersistentJobQueueProviderCollection queueProviders)
         {
             if (connection == null)
-                throw new ArgumentNullException(nameof(connection));
+                throw new ArgumentNullException("connection");
 
             if (queueProviders == null)
-                throw new ArgumentNullException(nameof(queueProviders));
+                throw new ArgumentNullException("queueProviders");
 
             _connection = connection;
             _queueProviders = queueProviders;
@@ -40,14 +40,47 @@ namespace Hangfire.Mongo
 
         public override void ExpireJob(string jobId, TimeSpan expireIn)
         {
-            QueueCommand(x => x.Job.UpdateMany(Builders<JobDto>.Filter.Eq(_ => _.Id, int.Parse(jobId)),
-                Builders<JobDto>.Update.Set(_ => _.ExpireAt, _connection.GetServerTimeUtc().Add(expireIn))));
+            var id = int.Parse(jobId);
+            var expireAt = _connection.GetServerTimeUtc() + expireIn;
+
+            QueueCommand(x =>
+            {
+                x.Job.UpdateOne(
+                    Builders<JobDto>.Filter.Eq(_ => _.Id, id),
+                    Builders<JobDto>.Update.Set(_ => _.ExpireAt, expireAt));
+
+                // set expiration on associated JobParameters
+                x.JobParameter.UpdateMany(
+                    Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, id),
+                    Builders<JobParameterDto>.Update.Set(_ => _.ExpireAt, expireAt));
+
+                // set expiration on asspciated States
+                x.State.UpdateMany(
+                    Builders<StateDto>.Filter.Eq(_ => _.JobId, id),
+                    Builders<StateDto>.Update.Set(_ => _.ExpireAt, expireAt));
+            });
         }
 
         public override void PersistJob(string jobId)
         {
-            QueueCommand(x => x.Job.UpdateMany(Builders<JobDto>.Filter.Eq(_ => _.Id, int.Parse(jobId)),
-                Builders<JobDto>.Update.Set(_ => _.ExpireAt, null)));
+            var id = int.Parse(jobId);
+
+            QueueCommand(x =>
+            {
+                x.Job.UpdateOne(
+                    Builders<JobDto>.Filter.Eq(_ => _.Id, id),
+                    Builders<JobDto>.Update.Set(_ => _.ExpireAt, null));
+
+                // clear expiration on associated JobParameters
+                x.JobParameter.UpdateMany(
+                    Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, id),
+                    Builders<JobParameterDto>.Update.Set(_ => _.ExpireAt, null));
+
+                // clear expiration on asspciated States
+                x.State.UpdateMany(
+                    Builders<StateDto>.Filter.Eq(_ => _.JobId, id),
+                    Builders<StateDto>.Update.Set(_ => _.ExpireAt, null));
+            });
         }
 
         public override void SetJobState(string jobId, IState state)
@@ -56,21 +89,19 @@ namespace Hangfire.Mongo
             {
                 StateDto stateDto = new StateDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     JobId = int.Parse(jobId),
                     Name = state.Name,
                     Reason = state.Reason,
                     CreatedAt = _connection.GetServerTimeUtc(),
                     Data = JobHelper.ToJson(state.SerializeData())
                 };
+
                 x.State.InsertOne(stateDto);
 
-                x.Job.UpdateMany(
-                    Builders<JobDto>.Filter.Eq(_ => _.Id, int.Parse(jobId)),
-                    Builders<JobDto>.Update.Set(_ => _.StateId, stateDto.Id));
-
-                x.Job.UpdateMany(Builders<JobDto>.Filter.Eq(_ => _.Id, int.Parse(jobId)),
-                    Builders<JobDto>.Update.Set(_ => _.StateName, state.Name));
+                x.Job.UpdateOne(
+                    Builders<JobDto>.Filter.Eq(_ => _.Id, stateDto.JobId),
+                    Builders<JobDto>.Update.Set(_ => _.StateId, stateDto.Id)
+                                           .Set(_ => _.StateName, state.Name));
             });
         }
 
@@ -78,7 +109,6 @@ namespace Hangfire.Mongo
         {
             QueueCommand(x => x.State.InsertOne(new StateDto
             {
-                Id = ObjectId.GenerateNewId(),
                 JobId = int.Parse(jobId),
                 Name = state.Name,
                 Reason = state.Reason,
@@ -102,7 +132,6 @@ namespace Hangfire.Mongo
         {
             QueueCommand(x => x.Counter.InsertOne(new CounterDto
             {
-                Id = ObjectId.GenerateNewId(),
                 Key = key,
                 Value = +1
             }));
@@ -112,7 +141,6 @@ namespace Hangfire.Mongo
         {
             QueueCommand(x => x.Counter.InsertOne(new CounterDto
             {
-                Id = ObjectId.GenerateNewId(),
                 Key = key,
                 Value = +1,
                 ExpireAt = _connection.GetServerTimeUtc().Add(expireIn)
@@ -123,7 +151,6 @@ namespace Hangfire.Mongo
         {
             QueueCommand(x => x.Counter.InsertOne(new CounterDto
             {
-                Id = ObjectId.GenerateNewId(),
                 Key = key,
                 Value = -1
             }));
@@ -133,7 +160,6 @@ namespace Hangfire.Mongo
         {
             QueueCommand(x => x.Counter.InsertOne(new CounterDto
             {
-                Id = ObjectId.GenerateNewId(),
                 Key = key,
                 Value = -1,
                 ExpireAt = _connection.GetServerTimeUtc().Add(expireIn)
@@ -147,7 +173,9 @@ namespace Hangfire.Mongo
 
         public override void AddToSet(string key, string value, double score)
         {
-            QueueCommand(x => x.Set.UpdateMany(Builders<SetDto>.Filter.Eq(_ => _.Key, key) & Builders<SetDto>.Filter.Eq(_ => _.Value, value),
+            QueueCommand(x => x.Set.UpdateOne(
+                Builders<SetDto>.Filter.Eq(_ => _.Key, key) &
+                Builders<SetDto>.Filter.Eq(_ => _.Value, value),
                 Builders<SetDto>.Update.Set(_ => _.Score, score),
                 new UpdateOptions
                 {
@@ -157,7 +185,7 @@ namespace Hangfire.Mongo
 
         public override void RemoveFromSet(string key, string value)
         {
-            QueueCommand(x => x.Set.DeleteMany(
+            QueueCommand(x => x.Set.DeleteOne(
                 Builders<SetDto>.Filter.Eq(_ => _.Key, key) &
                 Builders<SetDto>.Filter.Eq(_ => _.Value, value)));
         }
@@ -166,7 +194,6 @@ namespace Hangfire.Mongo
         {
             QueueCommand(x => x.List.InsertOne(new ListDto
             {
-                Id = ObjectId.GenerateNewId(),
                 Key = key,
                 Value = value
             }));
@@ -197,46 +224,51 @@ namespace Hangfire.Mongo
                     .Select(_ => _.Data)
                     .ToArray();
 
-                x.List.DeleteMany(Builders<ListDto>.Filter.Eq(_ => _.Key, key) & Builders<ListDto>.Filter.In(_ => _.Id, items));
+                x.List.DeleteMany(
+                    Builders<ListDto>.Filter.Eq(_ => _.Key, key) &
+                    Builders<ListDto>.Filter.In(_ => _.Id, items));
             });
         }
 
         public override void SetRangeInHash(string key, IEnumerable<KeyValuePair<string, string>> keyValuePairs)
         {
             if (key == null)
-                throw new ArgumentNullException(nameof(key));
+                throw new ArgumentNullException("key");
 
             if (keyValuePairs == null)
-                throw new ArgumentNullException(nameof(keyValuePairs));
+                throw new ArgumentNullException("keyValuePairs");
 
-            foreach (var keyValuePair in keyValuePairs)
+            QueueCommand(x =>
             {
-                var pair = keyValuePair;
-
-                QueueCommand(x => x.Hash.UpdateMany(
-                    Builders<HashDto>.Filter.Eq(_ => _.Key, key) & Builders<HashDto>.Filter.Eq(_ => _.Field, pair.Key),
-                    Builders<HashDto>.Update.Set(_ => _.Value, pair.Value),
-                    new UpdateOptions
-                    {
-                        IsUpsert = true
-                    }));
-            }
+                foreach (var pair in keyValuePairs)
+                {
+                    x.Hash.UpdateOne(
+                        Builders<HashDto>.Filter.Eq(_ => _.Key, key) &
+                        Builders<HashDto>.Filter.Eq(_ => _.Field, pair.Key),
+                        Builders<HashDto>.Update.Set(_ => _.Value, pair.Value),
+                        new UpdateOptions
+                        {
+                            IsUpsert = true
+                        });
+                }
+            });
         }
 
         public override void RemoveHash(string key)
         {
             if (key == null)
-                throw new ArgumentNullException(nameof(key));
+                throw new ArgumentNullException("key");
 
-            QueueCommand(x => x.Hash.DeleteMany(Builders<HashDto>.Filter.Eq(_ => _.Key, key)));
+            QueueCommand(x => x.Hash.DeleteMany(
+                Builders<HashDto>.Filter.Eq(_ => _.Key, key)));
         }
 
         public override void Commit()
         {
-            foreach (var action in _commandQueue)
-            {
-                action.Invoke(_connection);
-            }
+	        foreach (var action in _commandQueue)
+	        {
+		        action.Invoke(_connection);
+	        }
         }
 
         private void QueueCommand(Action<HangfireDbContext> action)
@@ -253,55 +285,62 @@ namespace Hangfire.Mongo
 
         public override void ExpireSet(string key, TimeSpan expireIn)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
-            QueueCommand(x => x.Set.UpdateMany(Builders<SetDto>.Filter.Eq(_ => _.Key, key),
+            if (key == null) throw new ArgumentNullException("key");
+            QueueCommand(x => x.Set.UpdateMany(
+                Builders<SetDto>.Filter.Eq(_ => _.Key, key),
                 Builders<SetDto>.Update.Set(_ => _.ExpireAt, _connection.GetServerTimeUtc().Add(expireIn))));
         }
 
         public override void ExpireList(string key, TimeSpan expireIn)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
-            QueueCommand(x => x.List.UpdateMany(Builders<ListDto>.Filter.Eq(_ => _.Key, key),
+            if (key == null) throw new ArgumentNullException("key");
+            QueueCommand(x => x.List.UpdateMany(
+                Builders<ListDto>.Filter.Eq(_ => _.Key, key),
                 Builders<ListDto>.Update.Set(_ => _.ExpireAt, _connection.GetServerTimeUtc().Add(expireIn))));
         }
 
         public override void ExpireHash(string key, TimeSpan expireIn)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
-            QueueCommand(x => x.Hash.UpdateMany(Builders<HashDto>.Filter.Eq(_ => _.Key, key),
+            if (key == null) throw new ArgumentNullException("key");
+            QueueCommand(x => x.Hash.UpdateMany(
+                Builders<HashDto>.Filter.Eq(_ => _.Key, key),
                 Builders<HashDto>.Update.Set(_ => _.ExpireAt, _connection.GetServerTimeUtc().Add(expireIn))));
         }
 
         public override void PersistSet(string key)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
-            QueueCommand(x => x.Set.UpdateMany(Builders<SetDto>.Filter.Eq(_ => _.Key, key),
+            if (key == null) throw new ArgumentNullException("key");
+            QueueCommand(x => x.Set.UpdateMany(
+                Builders<SetDto>.Filter.Eq(_ => _.Key, key),
                 Builders<SetDto>.Update.Set(_ => _.ExpireAt, null)));
         }
 
         public override void PersistList(string key)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
-            QueueCommand(x => x.List.UpdateMany(Builders<ListDto>.Filter.Eq(_ => _.Key, key),
+            if (key == null) throw new ArgumentNullException("key");
+            QueueCommand(x => x.List.UpdateMany(
+                Builders<ListDto>.Filter.Eq(_ => _.Key, key),
                 Builders<ListDto>.Update.Set(_ => _.ExpireAt, null)));
         }
 
         public override void PersistHash(string key)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
-            QueueCommand(x => x.Hash.UpdateMany(Builders<HashDto>.Filter.Eq(_ => _.Key, key),
+            if (key == null) throw new ArgumentNullException("key");
+            QueueCommand(x => x.Hash.UpdateMany(
+                Builders<HashDto>.Filter.Eq(_ => _.Key, key),
                 Builders<HashDto>.Update.Set(_ => _.ExpireAt, null)));
         }
 
         public override void AddRangeToSet(string key, IList<string> items)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
-            if (items == null) throw new ArgumentNullException(nameof(items));
+            if (key == null) throw new ArgumentNullException("key");
+            if (items == null) throw new ArgumentNullException("items");
 
             foreach (var item in items)
             {
                 QueueCommand(x => x.Set.UpdateMany(
-                    Builders<SetDto>.Filter.Eq(_ => _.Key, key) & Builders<SetDto>.Filter.In(_ => _.Value, items),
+                    Builders<SetDto>.Filter.Eq(_ => _.Key, key) & 
+                    Builders<SetDto>.Filter.In(_ => _.Value, items),
                     Builders<SetDto>.Update.Set(_ => _.Score, 0.0),
                     new UpdateOptions
                     {
@@ -312,8 +351,9 @@ namespace Hangfire.Mongo
 
         public override void RemoveSet(string key)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
-            QueueCommand(x => x.Set.DeleteMany(Builders<SetDto>.Filter.Eq(_ => _.Key, key)));
+            if (key == null) throw new ArgumentNullException("key");
+            QueueCommand(x => x.Set.DeleteMany(
+                Builders<SetDto>.Filter.Eq(_ => _.Key, key)));
         }
     }
 #pragma warning restore 1591
