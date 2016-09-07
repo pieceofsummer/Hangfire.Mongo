@@ -77,6 +77,7 @@
   <ItemGroup>
     <Compile Include="CountersAggregator.cs" />
     <Compile Include="Database\HangfireDbContext.cs" />
+    <Compile Include="DistributedLock\AsyncLocal.cs" />
     <Compile Include="DistributedLock\MongoDistributedLockException.cs" />
     <Compile Include="Dto\AggregatedCounterDto.cs" />
     <Compile Include="Dto\CounterDto.cs" />
