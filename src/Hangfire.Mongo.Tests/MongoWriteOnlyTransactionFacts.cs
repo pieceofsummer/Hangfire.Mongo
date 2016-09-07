@@ -891,7 +891,7 @@ namespace Hangfire.Mongo.Tests
         }
 
 
-        private static dynamic GetTestJob(HangfireDbContext database, int jobId)
+        private static JobDto GetTestJob(HangfireDbContext database, int jobId)
         {
             return database.Job.Find(Builders<JobDto>.Filter.Eq(_ => _.Id, jobId)).FirstOrDefault();
         }
@@ -901,12 +901,12 @@ namespace Hangfire.Mongo.Tests
             return database.Set.Find(Builders<SetDto>.Filter.Eq(_ => _.Key, key)).ToList();
         }
 
-        private static dynamic GetTestList(HangfireDbContext database, string key)
+        private static ListDto GetTestList(HangfireDbContext database, string key)
         {
             return database.List.Find(Builders<ListDto>.Filter.Eq(_ => _.Key, key)).FirstOrDefault();
         }
 
-        private static dynamic GetTestHash(HangfireDbContext database, string key)
+        private static HashDto GetTestHash(HangfireDbContext database, string key)
         {
             return database.Hash.Find(Builders<HashDto>.Filter.Eq(_ => _.Key, key)).FirstOrDefault();
         }
