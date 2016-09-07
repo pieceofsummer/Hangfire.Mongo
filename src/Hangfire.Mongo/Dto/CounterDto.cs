@@ -4,17 +4,19 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Hangfire.Mongo.Dto
 {
-#pragma warning disable 1591
-    public class CounterDto
+    [BsonIgnoreExtraElements]
+    internal class CounterDto
     {
         [BsonId]
         public ObjectId Id { get; set; }
 
+        [BsonRequired]
         public string Key { get; set; }
 
+        [BsonRequired]
         public int Value { get; set; }
 
+        [BsonIgnoreIfNull]
         public DateTime? ExpireAt { get; set; }
     }
-#pragma warning restore 1591
 }

@@ -1,19 +1,21 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using System;
 
 namespace Hangfire.Mongo.Dto
 {
-#pragma warning disable 1591
-    public class JobParameterDto
+    [BsonIgnoreExtraElements]
+    internal class JobParameterDto
     {
         [BsonId]
         public ObjectId Id { get; set; }
 
+        [BsonRequired]
         public int JobId { get; set; }
 
+        [BsonRequired]
         public string Name { get; set; }
 
         public string Value { get; set; }
     }
-#pragma warning restore 1591
 }

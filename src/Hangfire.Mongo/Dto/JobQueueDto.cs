@@ -4,17 +4,19 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Hangfire.Mongo.Dto
 {
-#pragma warning disable 1591
-    public class JobQueueDto
+    [BsonIgnoreExtraElements]
+    internal class JobQueueDto
     {
         [BsonId(IdGenerator = typeof(AutoIncrementIntIdGenerator))]
         public int Id { get; set; }
 
+        [BsonRequired]
         public int JobId { get; set; }
 
+        [BsonRequired]
         public string Queue { get; set; }
 
+        [BsonIgnoreIfNull]
         public DateTime? FetchedAt { get; set; }
     }
-#pragma warning restore 1591
 }

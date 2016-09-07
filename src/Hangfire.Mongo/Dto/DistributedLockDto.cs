@@ -4,15 +4,13 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Hangfire.Mongo.Dto
 {
-#pragma warning disable 1591
-    public class DistributedLockDto
+    [BsonIgnoreExtraElements]
+    internal class DistributedLockDto
     {
         [BsonId]
-        public ObjectId Id { get; set; }
-
         public string Resource { get; set; }
 
+        [BsonRequired]
         public DateTime Heartbeat { get; set; }
     }
-#pragma warning restore 1591
 }

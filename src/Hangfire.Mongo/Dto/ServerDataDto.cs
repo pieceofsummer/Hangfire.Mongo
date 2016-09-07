@@ -2,7 +2,6 @@
 
 namespace Hangfire.Mongo.Dto
 {
-#pragma warning disable 1591
     internal class ServerDataDto
     {
         public int WorkerCount { get; set; }
@@ -11,5 +10,4 @@ namespace Hangfire.Mongo.Dto
 
         public DateTime? StartedAt { get; set; }
     }
-#pragma warning restore 1591
 }

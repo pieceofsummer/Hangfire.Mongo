@@ -2,8 +2,7 @@
 
 namespace Hangfire.Mongo.Dto
 {
-#pragma warning disable 1591
-    public class IdentifierDto
+    internal class IdentifierDto
     {
         [BsonId]
         public string Id { get; set; }
@@ -11,5 +10,4 @@ namespace Hangfire.Mongo.Dto
         [BsonElement("seq")]
         public long Seq { get; set; }
     }
-#pragma warning restore 1591
 }

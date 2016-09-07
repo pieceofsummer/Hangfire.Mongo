@@ -3,8 +3,7 @@ using MongoDB.Bson;
 
 namespace Hangfire.Mongo.Dto
 {
-#pragma warning disable 1591
-    public class JobDetailedDto
+    internal class JobDetailedDto
     {
         public int Id { get; set; }
 
@@ -26,5 +25,4 @@ namespace Hangfire.Mongo.Dto
 
         public string StateData { get; set; }
     }
-#pragma warning restore 1591
 }

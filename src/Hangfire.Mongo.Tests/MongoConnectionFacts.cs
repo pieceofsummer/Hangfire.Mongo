@@ -661,8 +661,8 @@ namespace Hangfire.Mongo.Tests
                 var servers = database.Server.Find(new BsonDocument()).ToList()
                     .ToDictionary(x => x.Id, x => x.LastHeartbeat);
 
-                Assert.NotEqual(2012, servers["server1"].Value.Year);
-                Assert.Equal(2012, servers["server2"].Value.Year);
+                Assert.NotEqual(2012, servers["server1"].Year);
+                Assert.Equal(2012, servers["server2"].Year);
             });
         }
 
