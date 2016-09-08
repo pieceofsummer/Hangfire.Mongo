@@ -11,6 +11,7 @@ namespace Hangfire.Mongo.Dto
         public string Resource { get; set; }
 
         [BsonRequired]
-        public DateTime Heartbeat { get; set; }
+        public DateTime ExpireAt { get; set; }
+
     }
 }
