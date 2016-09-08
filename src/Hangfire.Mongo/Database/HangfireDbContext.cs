@@ -201,6 +201,17 @@ namespace Hangfire.Mongo.Database
 	            Schema.InsertOne(new SchemaDto {Version = RequiredSchemaVersion});
             }
 
+            // create indexes
+
+            CreateIndex(AggregatedCounter, "ix_key", ix => ix.Ascending(_ => _.Key));
+            CreateIndex(Counter, "ix_key", ix => ix.Ascending(_ => _.Key));
+            CreateIndex(Hash, "ix_key_field", ix => ix.Ascending(_ => _.Key).Ascending(_ => _.Field));
+            CreateIndex(JobParameter, "ix_jobId_name", ix => ix.Ascending(_ => _.JobId).Ascending(_ => _.Name));
+            CreateIndex(JobQueue, "ix_queue", ix => ix.Ascending(_ => _.Queue));
+            CreateIndex(List, "ix_key", ix => ix.Ascending(_ => _.Key));
+            CreateIndex(Set, "ix_key", ix => ix.Ascending(_ => _.Key));
+            CreateIndex(State, "ix_jobId", ix => ix.Ascending(_ => _.JobId));
+
             // create TTL indexes
 
             CreateTtlIndex(AggregatedCounter, _ => _.ExpireAt);
@@ -220,6 +231,15 @@ namespace Hangfire.Mongo.Database
             {
                 Name = "ix_ttl",
                 ExpireAfter = TimeSpan.Zero,
+                Background = true
+            });
+        }
+
+        private void CreateIndex<TEntity>(IMongoCollection<TEntity> collection, string name, Func<IndexKeysDefinitionBuilder<TEntity>, IndexKeysDefinition<TEntity>> configure)
+        {
+            collection.Indexes.CreateOne(configure(Builders<TEntity>.IndexKeys), new CreateIndexOptions()
+            {
+                Name = name,
                 Background = true
             });
         }
