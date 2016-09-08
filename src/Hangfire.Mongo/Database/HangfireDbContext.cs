@@ -80,7 +80,11 @@ namespace Hangfire.Mongo.Database
         /// </summary>
         internal virtual IMongoCollection<DistributedLockDto> DistributedLock
 	    {
-		    get { return Database.GetCollection<DistributedLockDto>(_prefix + ".locks"); }
+		    get
+            {
+                return Database.GetCollection<DistributedLockDto>(_prefix + ".locks")
+                               .WithWriteConcern(WriteConcern.WMajority);
+            }
 	    }
 
 	    /// <summary>
