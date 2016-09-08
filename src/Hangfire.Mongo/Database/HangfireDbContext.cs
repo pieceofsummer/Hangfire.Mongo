@@ -2,6 +2,7 @@
 using Hangfire.Mongo.Dto;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using System.Linq.Expressions;
 
 namespace Hangfire.Mongo.Database
 {
@@ -195,6 +196,28 @@ namespace Hangfire.Mongo.Database
             {
 	            Schema.InsertOne(new SchemaDto {Version = RequiredSchemaVersion});
             }
+
+            // create TTL indexes
+
+            CreateTtlIndex(AggregatedCounter, _ => _.ExpireAt);
+            CreateTtlIndex(Counter, _ => _.ExpireAt);
+            CreateTtlIndex(DistributedLock, _ => _.ExpireAt);
+            CreateTtlIndex(Hash, _ => _.ExpireAt);
+            CreateTtlIndex(Job, _ => _.ExpireAt);
+            CreateTtlIndex(JobParameter, _ => _.ExpireAt);
+            CreateTtlIndex(List, _ => _.ExpireAt);
+            CreateTtlIndex(Set, _ => _.ExpireAt);
+            CreateTtlIndex(State, _ => _.ExpireAt);
+        }
+
+        private void CreateTtlIndex<TEntity>(IMongoCollection<TEntity> collection, Expression<Func<TEntity, object>> field)
+        {
+            collection.Indexes.CreateOne(Builders<TEntity>.IndexKeys.Ascending(field), new CreateIndexOptions()
+            {
+                Name = "ix_ttl",
+                ExpireAfter = TimeSpan.Zero,
+                Background = true
+            });
         }
 
 		/// <summary>
