@@ -25,10 +25,10 @@ namespace Hangfire.Mongo
         public MongoWriteOnlyTransaction(HangfireDbContext connection, PersistentJobQueueProviderCollection queueProviders)
         {
             if (connection == null)
-                throw new ArgumentNullException("connection");
+                throw new ArgumentNullException(nameof(connection));
 
             if (queueProviders == null)
-                throw new ArgumentNullException("queueProviders");
+                throw new ArgumentNullException(nameof(queueProviders));
 
             _connection = connection;
             _queueProviders = queueProviders;
@@ -233,10 +233,10 @@ namespace Hangfire.Mongo
         public override void SetRangeInHash(string key, IEnumerable<KeyValuePair<string, string>> keyValuePairs)
         {
             if (key == null)
-                throw new ArgumentNullException("key");
+                throw new ArgumentNullException(nameof(key));
 
             if (keyValuePairs == null)
-                throw new ArgumentNullException("keyValuePairs");
+                throw new ArgumentNullException(nameof(keyValuePairs));
 
             QueueCommand(x =>
             {
@@ -257,7 +257,7 @@ namespace Hangfire.Mongo
         public override void RemoveHash(string key)
         {
             if (key == null)
-                throw new ArgumentNullException("key");
+                throw new ArgumentNullException(nameof(key));
 
             QueueCommand(x => x.Hash.DeleteMany(
                 Builders<HashDto>.Filter.Eq(_ => _.Key, key)));
