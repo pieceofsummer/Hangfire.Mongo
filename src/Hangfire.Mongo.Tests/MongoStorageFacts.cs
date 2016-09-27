@@ -51,18 +51,7 @@ namespace Hangfire.Mongo.Tests
                 Assert.NotNull(connection);
             }
         }
-
-        [Fact]
-        public void GetComponents_ReturnsAllNeededComponents()
-        {
-            MongoStorage storage = CreateStorage();
-
-            var components = storage.GetComponents();
-
-            Type[] componentTypes = components.Select(x => x.GetType()).ToArray();
-            Assert.Contains(typeof(ExpirationManager), componentTypes);
-        }
-
+        
         private static MongoStorage CreateStorage()
         {
             return new MongoStorage(ConnectionUtils.GetConnectionString(), ConnectionUtils.GetDatabaseName());
