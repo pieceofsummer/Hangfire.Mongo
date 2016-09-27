@@ -15,13 +15,11 @@ namespace Hangfire.Mongo.DistributedLock
     /// </summary>
     public sealed class MongoDistributedLock : IDisposable
     {
-
-        private static readonly ILog Logger = LogProvider.GetCurrentClassLogger();
+        private static readonly ILog Logger = LogProvider.For<MongoDistributedLock>();
 
         private static readonly ThreadLocal<Dictionary<string, int>> AcquiredLocks
                     = new ThreadLocal<Dictionary<string, int>>(() => new Dictionary<string, int>());
-
-
+        
         private readonly string _resource;
 
         private readonly HangfireDbContext _database;
@@ -139,8 +137,7 @@ namespace Hangfire.Mongo.DistributedLock
                     // Acquire the lock if it does not exist - Notice: ReturnDocument.Before
                     DistributedLockDto result = _database.DistributedLock.FindOneAndUpdate(
                         Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, _resource),
-                        Builders<DistributedLockDto>.Update.Combine(
-                            Builders<DistributedLockDto>.Update.SetOnInsert(_ => _.Heartbeat, _database.GetServerTimeUtc())),
+                        Builders<DistributedLockDto>.Update.SetOnInsert(_ => _.ExpireAt, _database.GetServerTimeUtc().Add(_options.DistributedLockLifetime)),
                         new FindOneAndUpdateOptions<DistributedLockDto> { IsUpsert = true, ReturnDocument = ReturnDocument.Before });
 
                     // If result is null, then it means we acquired the lock
@@ -197,7 +194,7 @@ namespace Hangfire.Mongo.DistributedLock
                 // Delete expired locks
                 _database.DistributedLock.DeleteOne(
                     Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, _resource) &
-                    Builders<DistributedLockDto>.Filter.Lt(_ => _.Heartbeat, _database.GetServerTimeUtc().Subtract(_options.DistributedLockLifetime)));
+                    Builders<DistributedLockDto>.Filter.Lt(_ => _.ExpireAt, _database.GetServerTimeUtc()));
             }
             catch (Exception ex)
             {
@@ -220,9 +217,9 @@ namespace Hangfire.Mongo.DistributedLock
                 {
                     try
                     {
-                        _database.DistributedLock
-                            .FindOneAndUpdate(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, _resource),
-                                Builders<DistributedLockDto>.Update.Set(_ => _.Heartbeat, _database.GetServerTimeUtc()));
+                        _database.DistributedLock.FindOneAndUpdate(
+                            Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, _resource),
+                            Builders<DistributedLockDto>.Update.Set(_ => _.ExpireAt, _database.GetServerTimeUtc().Add(_options.DistributedLockLifetime)));
                     }
                     catch (Exception ex)
                     {
@@ -231,6 +228,5 @@ namespace Hangfire.Mongo.DistributedLock
                 }
             }, null, timerInterval, timerInterval);
         }
-
     }
 }

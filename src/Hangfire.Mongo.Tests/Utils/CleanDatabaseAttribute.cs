@@ -33,7 +33,6 @@ namespace Hangfire.Mongo.Tests.Utils
                 {
                     context.Init();
 
-                    context.Identifiers.DeleteMany(new BsonDocument());
                     context.DistributedLock.DeleteMany(new BsonDocument());
                     context.AggregatedCounter.DeleteMany(new BsonDocument());
                     context.Counter.DeleteMany(new BsonDocument());

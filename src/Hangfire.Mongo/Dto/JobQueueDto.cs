@@ -1,17 +1,17 @@
 ﻿using System;
-using Hangfire.Mongo.MongoUtils;
 using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson;
 
 namespace Hangfire.Mongo.Dto
 {
     [BsonIgnoreExtraElements]
     internal class JobQueueDto
     {
-        [BsonId(IdGenerator = typeof(AutoIncrementIntIdGenerator))]
-        public int Id { get; set; }
+        [BsonId, BsonRepresentation(BsonType.ObjectId)]
+        public string Id { get; set; }
 
-        [BsonRequired]
-        public int JobId { get; set; }
+        [BsonRequired, BsonRepresentation(BsonType.ObjectId)]
+        public string JobId { get; set; }
 
         [BsonRequired]
         public string Queue { get; set; }

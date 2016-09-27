@@ -12,7 +12,7 @@ namespace Hangfire.Mongo.Database
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1063:ImplementIDisposableCorrectly")]
 	public class HangfireDbContext : IDisposable
     {
-        private const int RequiredSchemaVersion = 4;
+        private const int RequiredSchemaVersion = 5;
 
         private readonly string _prefix;
 
@@ -68,112 +68,77 @@ namespace Hangfire.Mongo.Database
         public string ConnectionId { get; private set; }
 
         /// <summary>
-        /// Reference to collection which contains identifiers
-        /// </summary>
-        internal virtual IMongoCollection<IdentifierDto> Identifiers
-        {
-	        get { return Database.GetCollection<IdentifierDto>(_prefix + "_identifiers"); }
-        }
-
-	    /// <summary>
         /// Reference to collection which contains distributed locks
         /// </summary>
         internal virtual IMongoCollection<DistributedLockDto> DistributedLock
-	    {
-		    get
-            {
-                return Database.GetCollection<DistributedLockDto>(_prefix + ".locks")
+            => Database.GetCollection<DistributedLockDto>(_prefix + ".locks")
                                .WithWriteConcern(WriteConcern.WMajority);
-            }
-	    }
 
 	    /// <summary>
         /// Reference to collection which contains counters
         /// </summary>
         internal virtual IMongoCollection<CounterDto> Counter
-	    {
-		    get { return Database.GetCollection<CounterDto>(_prefix + ".counter"); }
-	    }
+            => Database.GetCollection<CounterDto>(_prefix + ".counter");
 
 	    /// <summary>
         /// Reference to collection which contains aggregated counters
         /// </summary>
         internal virtual IMongoCollection<AggregatedCounterDto> AggregatedCounter
-	    {
-		    get { return Database.GetCollection<AggregatedCounterDto>(_prefix + ".aggregatedcounter"); }
-	    }
+            => Database.GetCollection<AggregatedCounterDto>(_prefix + ".aggregatedcounter");
 
 	    /// <summary>
         /// Reference to collection which contains hashes
         /// </summary>
         internal virtual IMongoCollection<HashDto> Hash
-	    {
-		    get { return Database.GetCollection<HashDto>(_prefix + ".hash"); }
-	    }
+            => Database.GetCollection<HashDto>(_prefix + ".hash");
 
 	    /// <summary>
         /// Reference to collection which contains jobs
         /// </summary>
         internal virtual IMongoCollection<JobDto> Job
-	    {
-		    get { return Database.GetCollection<JobDto>(_prefix + ".job"); }
-	    }
+            => Database.GetCollection<JobDto>(_prefix + ".job");
 
 	    /// <summary>
         /// Reference to collection which contains jobs parameters
         /// </summary>
         internal virtual IMongoCollection<JobParameterDto> JobParameter
-	    {
-		    get { return Database.GetCollection<JobParameterDto>(_prefix + ".jobParameter"); }
-	    }
+            => Database.GetCollection<JobParameterDto>(_prefix + ".jobParameter");
 
 	    /// <summary>
         /// Reference to collection which contains jobs queues
         /// </summary>
         internal virtual IMongoCollection<JobQueueDto> JobQueue
-	    {
-		    get { return Database.GetCollection<JobQueueDto>(_prefix + ".jobQueue"); }
-	    }
+            => Database.GetCollection<JobQueueDto>(_prefix + ".jobQueue");
 
 	    /// <summary>
         /// Reference to collection which contains lists
         /// </summary>
         internal virtual IMongoCollection<ListDto> List
-	    {
-		    get { return Database.GetCollection<ListDto>(_prefix + ".list"); }
-	    }
+            => Database.GetCollection<ListDto>(_prefix + ".list");
 
 	    /// <summary>
         /// Reference to collection which contains schemas
         /// </summary>
         internal virtual IMongoCollection<SchemaDto> Schema
-	    {
-		    get { return Database.GetCollection<SchemaDto>(_prefix + ".schema"); }
-	    }
+            => Database.GetCollection<SchemaDto>(_prefix + ".schema");
 
 	    /// <summary>
         /// Reference to collection which contains servers information
         /// </summary>
         internal virtual IMongoCollection<ServerDto> Server
-	    {
-		    get { return Database.GetCollection<ServerDto>(_prefix + ".server"); }
-	    }
+            => Database.GetCollection<ServerDto>(_prefix + ".server");
 
 	    /// <summary>
         /// Reference to collection which contains sets
         /// </summary>
         internal virtual IMongoCollection<SetDto> Set
-	    {
-		    get { return Database.GetCollection<SetDto>(_prefix + ".set"); }
-	    }
+            => Database.GetCollection<SetDto>(_prefix + ".set");
 
 	    /// <summary>
         /// Reference to collection which contains states
         /// </summary>
         internal virtual IMongoCollection<StateDto> State
-	    {
-		    get { return Database.GetCollection<StateDto>(_prefix + ".state"); }
-	    }
+            => Database.GetCollection<StateDto>(_prefix + ".state");
 
 	    /// <summary>
         /// Initializes intial collections schema for Hangfire

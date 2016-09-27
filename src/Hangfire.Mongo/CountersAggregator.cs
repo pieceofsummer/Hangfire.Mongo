@@ -14,9 +14,11 @@ namespace Hangfire.Mongo
     /// <summary>
     /// Represents Counter collection aggregator for Mongo database
     /// </summary>
+#pragma warning disable 618
     public class CountersAggregator : IBackgroundProcess, IServerComponent
+#pragma warning restore 618
     {
-        private static readonly ILog Logger = LogProvider.GetCurrentClassLogger();
+        private static readonly ILog Logger = LogProvider.For<CountersAggregator>();
 
         private const int NumberOfRecordsInSinglePass = 1000;
         private static readonly TimeSpan DelayBetweenPasses = TimeSpan.FromMilliseconds(500);
@@ -93,7 +95,6 @@ namespace Hangfire.Mongo
                         {
                             database.AggregatedCounter.InsertOne(new AggregatedCounterDto
                             {
-                                Id = ObjectId.GenerateNewId(),
                                 Key = item.Key,
                                 Value = item.Value,
                                 ExpireAt = item.ExpireAt

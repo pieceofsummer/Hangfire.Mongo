@@ -13,8 +13,7 @@ using MongoDB.Driver;
 
 namespace Hangfire.Mongo
 {
-#pragma warning disable 1591
-    public sealed class MongoWriteOnlyTransaction : JobStorageTransaction
+    internal sealed class MongoWriteOnlyTransaction : JobStorageTransaction
     {
         private readonly Queue<Action<HangfireDbContext>> _commandQueue = new Queue<Action<HangfireDbContext>>();
 
@@ -40,45 +39,42 @@ namespace Hangfire.Mongo
 
         public override void ExpireJob(string jobId, TimeSpan expireIn)
         {
-            var id = int.Parse(jobId);
             var expireAt = _connection.GetServerTimeUtc() + expireIn;
 
             QueueCommand(x =>
             {
                 x.Job.UpdateOne(
-                    Builders<JobDto>.Filter.Eq(_ => _.Id, id),
+                    Builders<JobDto>.Filter.Eq(_ => _.Id, jobId),
                     Builders<JobDto>.Update.Set(_ => _.ExpireAt, expireAt));
 
                 // set expiration on associated JobParameters
                 x.JobParameter.UpdateMany(
-                    Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, id),
+                    Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, jobId),
                     Builders<JobParameterDto>.Update.Set(_ => _.ExpireAt, expireAt));
 
                 // set expiration on asspciated States
                 x.State.UpdateMany(
-                    Builders<StateDto>.Filter.Eq(_ => _.JobId, id),
+                    Builders<StateDto>.Filter.Eq(_ => _.JobId, jobId),
                     Builders<StateDto>.Update.Set(_ => _.ExpireAt, expireAt));
             });
         }
 
         public override void PersistJob(string jobId)
         {
-            var id = int.Parse(jobId);
-
             QueueCommand(x =>
             {
                 x.Job.UpdateOne(
-                    Builders<JobDto>.Filter.Eq(_ => _.Id, id),
+                    Builders<JobDto>.Filter.Eq(_ => _.Id, jobId),
                     Builders<JobDto>.Update.Set(_ => _.ExpireAt, null));
 
                 // clear expiration on associated JobParameters
                 x.JobParameter.UpdateMany(
-                    Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, id),
+                    Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, jobId),
                     Builders<JobParameterDto>.Update.Set(_ => _.ExpireAt, null));
 
                 // clear expiration on asspciated States
                 x.State.UpdateMany(
-                    Builders<StateDto>.Filter.Eq(_ => _.JobId, id),
+                    Builders<StateDto>.Filter.Eq(_ => _.JobId, jobId),
                     Builders<StateDto>.Update.Set(_ => _.ExpireAt, null));
             });
         }
@@ -89,7 +85,7 @@ namespace Hangfire.Mongo
             {
                 StateDto stateDto = new StateDto
                 {
-                    JobId = int.Parse(jobId),
+                    JobId = jobId,
                     Name = state.Name,
                     Reason = state.Reason,
                     CreatedAt = _connection.GetServerTimeUtc(),
@@ -109,7 +105,7 @@ namespace Hangfire.Mongo
         {
             QueueCommand(x => x.State.InsertOne(new StateDto
             {
-                JobId = int.Parse(jobId),
+                JobId = jobId,
                 Name = state.Name,
                 Reason = state.Reason,
                 CreatedAt = _connection.GetServerTimeUtc(),
@@ -213,7 +209,7 @@ namespace Hangfire.Mongo
                 int start = keepStartingFrom + 1;
                 int end = keepEndingAt + 1;
 
-                ObjectId[] items = ((IEnumerable<ListDto>)x.List
+                string[] items = ((IEnumerable<ListDto>)x.List
                         .Find(new BsonDocument())
                         .Project(Builders<ListDto>.Projection.Include(_ => _.Key))
                         .Project(_ => _)
@@ -356,5 +352,4 @@ namespace Hangfire.Mongo
                 Builders<SetDto>.Filter.Eq(_ => _.Key, key)));
         }
     }
-#pragma warning restore 1591
 }

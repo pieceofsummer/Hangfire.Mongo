@@ -121,14 +121,16 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(database =>
             {
-                using (new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, new MongoStorageOptions() { DistributedLockLifetime = TimeSpan.FromSeconds(3) }))
+                var options = new MongoStorageOptions() { DistributedLockLifetime = TimeSpan.FromSeconds(3) };
+
+                using (new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, options))
                 {
-                    DateTime initialHeartBeat = database.GetServerTimeUtc();
+                    DateTime initialExpireAt = database.GetServerTimeUtc() + options.DistributedLockLifetime;
                     Thread.Sleep(TimeSpan.FromSeconds(5));
 
                     DistributedLockDto lockEntry = database.DistributedLock.Find(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, "resource1")).FirstOrDefault();
                     Assert.NotNull(lockEntry);
-                    Assert.True(lockEntry.Heartbeat > initialHeartBeat);
+                    Assert.True(lockEntry.ExpireAt > initialExpireAt);
                 }
             });
         }

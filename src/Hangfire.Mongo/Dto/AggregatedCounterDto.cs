@@ -1,6 +1,6 @@
 using System;
-using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson;
 
 namespace Hangfire.Mongo.Dto
 {
@@ -8,9 +8,6 @@ namespace Hangfire.Mongo.Dto
     internal class AggregatedCounterDto
     {
         [BsonId]
-        public ObjectId Id { get; set; }
-
-        [BsonRequired]
         public string Key { get; set; }
 
         [BsonRequired]

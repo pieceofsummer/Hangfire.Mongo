@@ -100,21 +100,20 @@ namespace Hangfire.Mongo.Tests
             {
                 var jobQueue = new JobQueueDto
                 {
-                    JobId = 1,
+                    JobId = ObjectId.GenerateNewId().ToString(),
                     Queue = "default"
                 };
 
                 connection.JobQueue.InsertOne(jobQueue);
-
-                var id = jobQueue.Id;
+                
                 var queue = CreateJobQueue(connection);
 
                 // Act
                 MongoFetchedJob payload = (MongoFetchedJob)queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
 
                 // Assert
-                Assert.Equal(id, payload.Id);
-                Assert.Equal("1", payload.JobId);
+                Assert.Equal(jobQueue.Id, payload.Id);
+                Assert.Equal(jobQueue.JobId, payload.JobId);
                 Assert.Equal("default", payload.Queue);
             });
         }
@@ -148,7 +147,7 @@ namespace Hangfire.Mongo.Tests
                 // Assert
                 Assert.NotNull(payload);
 
-                var fetchedAt = connection.JobQueue.Find(Builders<JobQueueDto>.Filter.Eq(_ => _.JobId, int.Parse(payload.JobId))).FirstOrDefault().FetchedAt;
+                var fetchedAt = connection.JobQueue.Find(Builders<JobQueueDto>.Filter.Eq(_ => _.JobId, payload.JobId)).FirstOrDefault().FetchedAt;
 
                 Assert.NotNull(fetchedAt);
                 Assert.True(fetchedAt > DateTime.UtcNow.AddMinutes(-1));
@@ -227,7 +226,7 @@ namespace Hangfire.Mongo.Tests
                 var payload = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
 
                 // Assert
-                var otherJobFetchedAt = connection.JobQueue.Find(Builders<JobQueueDto>.Filter.Ne(_ => _.JobId, int.Parse(payload.JobId))).FirstOrDefault().FetchedAt;
+                var otherJobFetchedAt = connection.JobQueue.Find(Builders<JobQueueDto>.Filter.Ne(_ => _.JobId, payload.JobId)).FirstOrDefault().FetchedAt;
 
                 Assert.Null(otherJobFetchedAt);
             });
@@ -317,10 +316,11 @@ namespace Hangfire.Mongo.Tests
             {
                 var queue = CreateJobQueue(connection);
 
-                queue.Enqueue("default", "1");
+                var jobId = ObjectId.GenerateNewId().ToString();
+                queue.Enqueue("default", jobId);
 
                 var record = connection.JobQueue.Find(new BsonDocument()).ToList().Single();
-                Assert.Equal("1", record.JobId.ToString());
+                Assert.Equal(jobId, record.JobId);
                 Assert.Equal("default", record.Queue);
                 Assert.Null(record.FetchedAt);
             });

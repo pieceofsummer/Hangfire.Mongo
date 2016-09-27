@@ -82,18 +82,16 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
             }
             while (fetchedJob == null);
 
-            return new MongoFetchedJob(_connection, fetchedJob.Id, fetchedJob.JobId.ToString(CultureInfo.InvariantCulture), fetchedJob.Queue);
+            return new MongoFetchedJob(_connection, fetchedJob.Id, fetchedJob.JobId, fetchedJob.Queue);
         }
 
         public void Enqueue(string queue, string jobId)
         {
-            _connection
-                .JobQueue
-                .InsertOne(new JobQueueDto
-                {
-                    JobId = int.Parse(jobId),
-                    Queue = queue
-                });
+            _connection.JobQueue.InsertOne(new JobQueueDto
+            {
+                JobId = jobId,
+                Queue = queue
+            });
         }
     }
 #pragma warning disable 1591

@@ -52,7 +52,6 @@ namespace Hangfire.Mongo.Tests
             {
                 JobDto job = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
@@ -61,7 +60,6 @@ namespace Hangfire.Mongo.Tests
 
                 JobDto anotherJob = new JobDto
                 {
-                    Id = 2,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
@@ -71,7 +69,7 @@ namespace Hangfire.Mongo.Tests
                 var jobId = job.Id;
                 var anotherJobId = anotherJob.Id;
 
-                Commit(database, x => x.ExpireJob(jobId.ToString(), TimeSpan.FromDays(1)));
+                Commit(database, x => x.ExpireJob(jobId, TimeSpan.FromDays(1)));
 
                 var testJob = GetTestJob(database, jobId);
                 Assert.True(database.GetServerTimeUtc().AddMinutes(-1) < testJob.ExpireAt && testJob.ExpireAt <= database.GetServerTimeUtc().AddDays(1));
@@ -88,7 +86,6 @@ namespace Hangfire.Mongo.Tests
             {
                 JobDto job = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc(),
@@ -98,7 +95,6 @@ namespace Hangfire.Mongo.Tests
 
                 JobDto anotherJob = new JobDto
                 {
-                    Id = 2,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc(),
@@ -126,7 +122,6 @@ namespace Hangfire.Mongo.Tests
             {
                 JobDto job = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
@@ -135,7 +130,6 @@ namespace Hangfire.Mongo.Tests
 
                 JobDto anotherJob = new JobDto
                 {
-                    Id = 2,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
@@ -159,7 +153,7 @@ namespace Hangfire.Mongo.Tests
 
                 var anotherTestJob = GetTestJob(database, anotherJobId);
                 Assert.Null(anotherTestJob.StateName);
-                Assert.Equal(ObjectId.Empty, anotherTestJob.StateId);
+                Assert.Equal(null, anotherTestJob.StateId);
 
                 StateDto jobState = database.State.Find(new BsonDocument()).ToList().Single();
                 Assert.Equal(jobId, jobState.JobId);
@@ -177,7 +171,6 @@ namespace Hangfire.Mongo.Tests
             {
                 JobDto job = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
@@ -196,7 +189,7 @@ namespace Hangfire.Mongo.Tests
 
                 var testJob = GetTestJob(database, jobId);
                 Assert.Null(testJob.StateName);
-                Assert.Equal(ObjectId.Empty, testJob.StateId);
+                Assert.Equal(null, testJob.StateId);
 
                 StateDto jobState = database.State.Find(new BsonDocument()).ToList().Single();
                 Assert.Equal(jobId, jobState.JobId);
@@ -891,7 +884,7 @@ namespace Hangfire.Mongo.Tests
         }
 
 
-        private static JobDto GetTestJob(HangfireDbContext database, int jobId)
+        private static JobDto GetTestJob(HangfireDbContext database, string jobId)
         {
             return database.Job.Find(Builders<JobDto>.Filter.Eq(_ => _.Id, jobId)).FirstOrDefault();
         }

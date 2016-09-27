@@ -150,9 +150,9 @@ namespace Hangfire.Mongo.Tests
                 Assert.NotEmpty(jobId);
 
                 var databaseJob = database.Job.Find(new BsonDocument()).ToList().Single();
-                Assert.Equal(jobId, databaseJob.Id.ToString());
+                Assert.Equal(jobId, databaseJob.Id);
                 Assert.Equal(createdAt, databaseJob.CreatedAt);
-                Assert.Equal(ObjectId.Empty, databaseJob.StateId);
+                Assert.Equal(null, databaseJob.StateId);
                 Assert.Equal(null, databaseJob.StateName);
 
                 var invocationData = JobHelper.FromJson<InvocationData>(databaseJob.InvocationData);
@@ -166,7 +166,7 @@ namespace Hangfire.Mongo.Tests
                 Assert.True(createdAt.AddDays(1).AddMinutes(-1) < databaseJob.ExpireAt);
                 Assert.True(databaseJob.ExpireAt < createdAt.AddDays(1).AddMinutes(1));
 
-                var parameters = database.JobParameter.Find(Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, int.Parse(jobId))).ToList()
+                var parameters = database.JobParameter.Find(Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, jobId)).ToList()
                     .ToDictionary(x => x.Name, x => x.Value);
 
                 Assert.Equal("Value1", parameters["Key1"]);
@@ -186,7 +186,7 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection((database, connection) =>
             {
-                var result = connection.GetJobData("547527");
+                var result = connection.GetJobData(ObjectId.GenerateNewId().ToString());
                 Assert.Null(result);
             });
         }
@@ -200,15 +200,14 @@ namespace Hangfire.Mongo.Tests
 
                 var jobDto = new JobDto
                 {
-                    Id = 1,
                     InvocationData = JobHelper.ToJson(InvocationData.Serialize(job)),
-                    Arguments = "['Arguments']",
+                    Arguments = "['\\\"Arguments\\\"']",
                     StateName = "Succeeded",
                     CreatedAt = database.GetServerTimeUtc()
                 };
                 database.Job.InsertOne(jobDto);
 
-                var result = connection.GetJobData(jobDto.Id.ToString());
+                var result = connection.GetJobData(jobDto.Id);
 
                 Assert.NotNull(result);
                 Assert.NotNull(result.Job);
@@ -233,7 +232,7 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection((database, connection) =>
             {
-                var result = connection.GetStateData("547527");
+                var result = connection.GetStateData(ObjectId.GenerateNewId().ToString());
                 Assert.Null(result);
             });
         }
@@ -250,7 +249,6 @@ namespace Hangfire.Mongo.Tests
 
                 var jobDto = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     StateName = "",
@@ -262,7 +260,6 @@ namespace Hangfire.Mongo.Tests
 
                 database.State.InsertOne(new StateDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     JobId = jobId,
                     Name = "old-state",
                     CreatedAt = database.GetServerTimeUtc()
@@ -270,7 +267,6 @@ namespace Hangfire.Mongo.Tests
 
                 var stateDto = new StateDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     JobId = jobId,
                     Name = "Name",
                     Reason = "Reason",
@@ -298,7 +294,6 @@ namespace Hangfire.Mongo.Tests
             {
                 var jobDto = new JobDto
                 {
-                    Id = 1,
                     InvocationData = JobHelper.ToJson(new InvocationData(null, null, null, null)),
                     Arguments = "['Arguments']",
                     StateName = "Succeeded",
@@ -307,7 +302,7 @@ namespace Hangfire.Mongo.Tests
                 database.Job.InsertOne(jobDto);
                 var jobId = jobDto.Id;
 
-                var result = connection.GetJobData(jobId.ToString());
+                var result = connection.GetJobData(jobId);
 
                 Assert.NotNull(result.LoadException);
             });
@@ -321,7 +316,7 @@ namespace Hangfire.Mongo.Tests
                 var exception = Assert.Throws<ArgumentNullException>(
                     () => connection.SetJobParameter(null, "name", "value"));
 
-                Assert.Equal("id", exception.ParamName);
+                Assert.Equal("jobId", exception.ParamName);
             });
         }
 
@@ -344,17 +339,16 @@ namespace Hangfire.Mongo.Tests
             {
                 var jobDto = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
                 };
                 database.Job.InsertOne(jobDto);
-                string jobId = jobDto.Id.ToString();
+                var jobId = jobDto.Id;
 
                 connection.SetJobParameter(jobId, "Name", "Value");
 
-                var parameter = database.JobParameter.Find(Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, int.Parse(jobId)) &
+                var parameter = database.JobParameter.Find(Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, jobId) &
                     Builders<JobParameterDto>.Filter.Eq(_ => _.Name, "Name")).FirstOrDefault();
 
                 Assert.Equal("Value", parameter.Value);
@@ -368,18 +362,17 @@ namespace Hangfire.Mongo.Tests
             {
                 var jobDto = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
                 };
                 database.Job.InsertOne(jobDto);
-                string jobId = jobDto.Id.ToString();
+                var jobId = jobDto.Id;
 
                 connection.SetJobParameter(jobId, "Name", "Value");
                 connection.SetJobParameter(jobId, "Name", "AnotherValue");
 
-                var parameter = database.JobParameter.Find(Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, int.Parse(jobId)) &
+                var parameter = database.JobParameter.Find(Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, jobId) &
                     Builders<JobParameterDto>.Filter.Eq(_ => _.Name, "Name")).FirstOrDefault();
 
                 Assert.Equal("AnotherValue", parameter.Value);
@@ -393,17 +386,16 @@ namespace Hangfire.Mongo.Tests
             {
                 var jobDto = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
                 };
                 database.Job.InsertOne(jobDto);
-                string jobId = jobDto.Id.ToString();
+                var jobId = jobDto.Id;
 
                 connection.SetJobParameter(jobId, "Name", null);
 
-                var parameter = database.JobParameter.Find(Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, int.Parse(jobId)) &
+                var parameter = database.JobParameter.Find(Builders<JobParameterDto>.Filter.Eq(_ => _.JobId, jobId) &
                     Builders<JobParameterDto>.Filter.Eq(_ => _.Name, "Name")).FirstOrDefault();
 
                 Assert.Equal(null, parameter.Value);
@@ -418,7 +410,7 @@ namespace Hangfire.Mongo.Tests
                 var exception = Assert.Throws<ArgumentNullException>(
                     () => connection.GetJobParameter(null, "hello"));
 
-                Assert.Equal("id", exception.ParamName);
+                Assert.Equal("jobId", exception.ParamName);
             });
         }
 
@@ -439,7 +431,7 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection((database, connection) =>
             {
-                var value = connection.GetJobParameter("1", "hello");
+                var value = connection.GetJobParameter("547527b4c6b6cc26a02d021d", "hello");
                 Assert.Null(value);
             });
         }
@@ -451,18 +443,16 @@ namespace Hangfire.Mongo.Tests
             {
                 var jobDto = new JobDto
                 {
-                    Id = 1,
                     InvocationData = "",
                     Arguments = "",
                     CreatedAt = database.GetServerTimeUtc()
                 };
                 database.Job.InsertOne(jobDto);
-                string jobId = jobDto.Id.ToString();
+                var jobId = jobDto.Id;
 
                 database.JobParameter.InsertOne(new JobParameterDto
                 {
-                    Id = ObjectId.GenerateNewId(),
-                    JobId = int.Parse(jobId),
+                    JobId = jobId,
                     Name = "name",
                     Value = "value"
                 });
@@ -511,28 +501,24 @@ namespace Hangfire.Mongo.Tests
             {
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "key",
                     Score = 1.0,
                     Value = "1.0"
                 });
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "key",
                     Score = -1.0,
                     Value = "-1.0"
                 });
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "key",
                     Score = -5.0,
                     Value = "-5.0"
                 });
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "another-key",
                     Score = -2.0,
                     Value = "-2.0"
@@ -725,21 +711,18 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "some-set",
                     Score = 0.0,
                     Value = "1"
                 });
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "some-set",
                     Score = 0.0,
                     Value = "2"
                 });
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "another-set",
                     Score = 0.0,
                     Value = "3"
@@ -823,21 +806,18 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "some-hash",
                     Field = "Key1",
                     Value = "Value1"
                 });
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "some-hash",
                     Field = "Key2",
                     Value = "Value2"
                 });
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "another-hash",
                     Field = "Key3",
                     Value = "Value3"
@@ -881,19 +861,16 @@ namespace Hangfire.Mongo.Tests
             {
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-1",
                     Value = "value-1"
                 });
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-2",
                     Value = "value-1"
                 });
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-1",
                     Value = "value-2"
                 });
@@ -920,7 +897,6 @@ namespace Hangfire.Mongo.Tests
             {
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-1",
                     Value = "1",
                     Score = 0.0
@@ -928,7 +904,6 @@ namespace Hangfire.Mongo.Tests
 
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-1",
                     Value = "2",
                     Score = 0.0
@@ -936,7 +911,6 @@ namespace Hangfire.Mongo.Tests
 
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-1",
                     Value = "3",
                     Score = 0.0
@@ -944,7 +918,6 @@ namespace Hangfire.Mongo.Tests
 
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-1",
                     Value = "4",
                     Score = 0.0
@@ -952,7 +925,6 @@ namespace Hangfire.Mongo.Tests
 
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-2",
                     Value = "5",
                     Score = 0.0
@@ -960,7 +932,6 @@ namespace Hangfire.Mongo.Tests
 
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-1",
                     Value = "6",
                     Score = 0.0
@@ -999,7 +970,6 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-1",
                     Value = "1",
                     Score = 0.0,
@@ -1008,7 +978,6 @@ namespace Hangfire.Mongo.Tests
 
                 database.Set.InsertOne(new SetDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "set-2",
                     Value = "2",
                     Score = 0.0,
@@ -1052,19 +1021,16 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.Counter.InsertOne(new CounterDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "counter-1",
                     Value = 1
                 });
                 database.Counter.InsertOne(new CounterDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "counter-2",
                     Value = 1
                 });
                 database.Counter.InsertOne(new CounterDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "counter-1",
                     Value = 1
                 });
@@ -1085,13 +1051,11 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.AggregatedCounter.InsertOne(new AggregatedCounterDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "counter-1",
                     Value = 12
                 });
                 database.AggregatedCounter.InsertOne(new AggregatedCounterDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "counter-2",
                     Value = 15
                 });
@@ -1130,19 +1094,16 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "hash-1",
                     Field = "field-1"
                 });
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "hash-1",
                     Field = "field-2"
                 });
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "hash-2",
                     Field = "field-1"
                 });
@@ -1183,14 +1144,12 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "hash-1",
                     Field = "field",
                     ExpireAt = DateTime.UtcNow.AddHours(1)
                 });
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "hash-2",
                     Field = "field",
                     ExpireAt = null
@@ -1247,21 +1206,18 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "hash-1",
                     Field = "field-1",
                     Value = "1"
                 });
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "hash-1",
                     Field = "field-2",
                     Value = "2"
                 });
                 database.Hash.InsertOne(new HashDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "hash-2",
                     Field = "field-1",
                     Value = "3"
@@ -1303,17 +1259,14 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-2",
                 });
 
@@ -1353,13 +1306,11 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                     ExpireAt = DateTime.UtcNow.AddHours(1)
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-2",
                     ExpireAt = null
                 });
@@ -1403,31 +1354,26 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                     Value = "1"
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-2",
                     Value = "2"
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                     Value = "3"
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                     Value = "4"
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                     Value = "5"
                 });
@@ -1468,19 +1414,16 @@ namespace Hangfire.Mongo.Tests
                 // Arrange
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                     Value = "1"
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-2",
                     Value = "2"
                 });
                 database.List.InsertOne(new ListDto
                 {
-                    Id = ObjectId.GenerateNewId(),
                     Key = "list-1",
                     Value = "3"
                 });

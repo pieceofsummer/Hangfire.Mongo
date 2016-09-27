@@ -3,8 +3,7 @@ using Hangfire.Storage;
 
 namespace Hangfire.Mongo.StateHandlers
 {
-#pragma warning disable 1591
-    public class SucceededStateHandler : IStateHandler
+    internal class SucceededStateHandler : IStateHandler
     {
         public void Apply(ApplyStateContext context, IWriteOnlyTransaction transaction)
         {
@@ -19,5 +18,4 @@ namespace Hangfire.Mongo.StateHandlers
 
         public string StateName => SucceededState.StateName;
     }
-#pragma warning restore 1591
 }

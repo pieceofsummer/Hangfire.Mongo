@@ -5,7 +5,7 @@ namespace Hangfire.Mongo.Dto
 {
     internal class JobDetailedDto
     {
-        public int Id { get; set; }
+        public string Id { get; set; }
 
         public string InvocationData { get; set; }
 
@@ -17,7 +17,7 @@ namespace Hangfire.Mongo.Dto
 
         public DateTime? FetchedAt { get; set; }
 
-        public ObjectId StateId { get; set; }
+        public string StateId { get; set; }
 
         public string StateName { get; set; }
 
