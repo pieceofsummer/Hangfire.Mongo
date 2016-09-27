@@ -19,7 +19,7 @@ namespace Hangfire.Mongo
 #pragma warning restore 618
     {
         private static readonly ILog Logger = LogProvider.For<CountersAggregator>();
-
+        
         private const int NumberOfRecordsInSinglePass = 1000;
         private static readonly TimeSpan DelayBetweenPasses = TimeSpan.FromMilliseconds(500);
 
@@ -56,63 +56,55 @@ namespace Hangfire.Mongo
         public void Execute(CancellationToken cancellationToken)
         {
             Logger.DebugFormat("Aggregating records in 'Counter' table...");
-
+            
             long removedCount;
 
             do
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 using (var storageConnection = (MongoConnection)_storage.GetConnection())
                 {
                     HangfireDbContext database = storageConnection.Database;
 
-                    List<CounterDto> recordsToAggregate = database
-                        .Counter.Find(new BsonDocument())
-                        .Limit(NumberOfRecordsInSinglePass)
-                        .ToList();
-
-                    var recordsToMerge = recordsToAggregate
-                        .GroupBy(_ => _.Key).Select(_ => new
+                    var stats = database.Counter.AsQueryable()
+                        .Take(NumberOfRecordsInSinglePass)
+                        .GroupBy(_ => _.Key)
+                        .Select(g => new
                         {
-                            Key = _.Key,
-                            Value = _.Sum(x => x.Value),
-                            ExpireAt = _.Max(x => x.ExpireAt)
-                        });
+                            Key = g.Key,
+                            Ids = g.Select(_ => _.Id),
+                            Value = g.Sum(_ => _.Value),
+                            ExpireAt = g.Max(_ => _.ExpireAt)
+                        })
+                        .ToArray();
 
-                    foreach (var item in recordsToMerge)
+                    removedCount = 0;
+
+                    foreach (var item in stats)
                     {
-                        AggregatedCounterDto aggregatedItem = database
-                            .AggregatedCounter
-                            .Find(Builders<AggregatedCounterDto>.Filter.Eq(_ => _.Key, item.Key))
-                            .FirstOrDefault();
-                        if (aggregatedItem != null)
-                        {
-                            database.AggregatedCounter.UpdateOne(Builders<AggregatedCounterDto>.Filter.Eq(_ => _.Key, item.Key),
-                                Builders<AggregatedCounterDto>.Update.Combine(
-                                Builders<AggregatedCounterDto>.Update.Inc(_ => _.Value, item.Value),
-                                Builders<AggregatedCounterDto>.Update.Set(_ => _.ExpireAt, item.ExpireAt > aggregatedItem.ExpireAt ? item.ExpireAt : aggregatedItem.ExpireAt)));
-                        }
-                        else
-                        {
-                            database.AggregatedCounter.InsertOne(new AggregatedCounterDto
-                            {
-                                Key = item.Key,
-                                Value = item.Value,
-                                ExpireAt = item.ExpireAt
-                            });
-                        }
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        // update aggregated counter
+                        database.AggregatedCounter.UpdateOne(
+                            Builders<AggregatedCounterDto>.Filter.Eq(_ => _.Key, item.Key),
+                            Builders<AggregatedCounterDto>.Update.Inc(_ => _.Value, item.Value)
+                                                                 .Max(_ => _.ExpireAt, item.ExpireAt),
+                            new UpdateOptions { IsUpsert = true }, cancellationToken);
+
+                        // delete corresponding counter records
+                        removedCount += database.Counter.DeleteMany(
+                            Builders<CounterDto>.Filter.Eq(_ => _.Key, item.Key) &
+                            Builders<CounterDto>.Filter.In(_ => _.Id, item.Ids)).DeletedCount;
                     }
 
-                    removedCount = database
-                        .Counter
-                        .DeleteMany(Builders<CounterDto>.Filter.In(_ => _.Id, recordsToAggregate.Select(_ => _.Id)))
-                        .DeletedCount;
+                    if (removedCount >= NumberOfRecordsInSinglePass)
+                    {
+                        cancellationToken.WaitHandle.WaitOne(DelayBetweenPasses);
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
                 }
-
-                if (removedCount >= NumberOfRecordsInSinglePass)
-                {
-                    cancellationToken.WaitHandle.WaitOne(DelayBetweenPasses);
-                    cancellationToken.ThrowIfCancellationRequested();
-                }
+                
             } while (removedCount >= NumberOfRecordsInSinglePass);
 
             cancellationToken.WaitHandle.WaitOne(_interval);
