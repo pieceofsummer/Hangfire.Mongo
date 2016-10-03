@@ -120,6 +120,25 @@ namespace Hangfire.Mongo
             });
         }
 
+        private static long GetCounter(HangfireDbContext connection, string key)
+        {
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentNullException(nameof(key));
+
+            var count = connection.Counter.AsQueryable()
+                .Where(_ => _.Key == key)
+                .GroupBy(_ => _.Key)
+                .Select(g => g.Sum(_ => _.Value))
+                .FirstOrDefault();
+
+            var aggregatedCount = connection.AggregatedCounter.AsQueryable()
+                .Where(_ => _.Key == key)
+                .Select(_ => _.Value)
+                .FirstOrDefault();
+
+            return count + aggregatedCount;
+        }
+
         public StatisticsDto GetStatistics()
         {
             return UseConnection(connection =>
@@ -140,17 +159,9 @@ namespace Hangfire.Mongo
                 stats.Scheduled = getCountIfExists(ScheduledState.StateName);
 
                 stats.Servers = connection.Server.Count(new BsonDocument());
-                
-                int[] succeededItems = connection.Counter.Find(
-                    Builders<CounterDto>.Filter.Eq(_ => _.Key, "stats:succeeded")).ToList().Select(_ => _.Value).Concat(
-                    connection.AggregatedCounter.Find(Builders<AggregatedCounterDto>.Filter.Eq(_ => _.Key, "stats:succeeded")).ToList().Select(_ => (int)_.Value))
-                    .ToArray();
-                stats.Succeeded = succeededItems.Any() ? succeededItems.Sum() : 0;
 
-                int[] deletedItems = connection.Counter.Find(Builders<CounterDto>.Filter.Eq(_ => _.Key, "stats:deleted")).ToList().Select(_ => _.Value)
-                    .Concat(connection.AggregatedCounter.Find(Builders<AggregatedCounterDto>.Filter.Eq(_ => _.Key, "stats:deleted")).ToList().Select(_ => (int)_.Value))
-                    .ToArray();
-                stats.Deleted = deletedItems.Any() ? deletedItems.Sum() : 0;
+                stats.Succeeded = GetCounter(connection, "stats:succeeded");
+                stats.Deleted = GetCounter(connection, "stats:deleted");
 
                 stats.Recurring = connection.Set.Count(Builders<SetDto>.Filter.Eq(_ => _.Key, "recurring-jobs"));
 
