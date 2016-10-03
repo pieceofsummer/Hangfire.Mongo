@@ -19,9 +19,6 @@ namespace Hangfire.Mongo
 #pragma warning restore 618
     {
         private static readonly ILog Logger = LogProvider.For<CountersAggregator>();
-        
-        private const int NumberOfRecordsInSinglePass = 1000;
-        private static readonly TimeSpan DelayBetweenPasses = TimeSpan.FromMilliseconds(500);
 
         private readonly MongoStorage _storage;
         private readonly TimeSpan _interval;
@@ -57,55 +54,40 @@ namespace Hangfire.Mongo
         {
             Logger.DebugFormat("Aggregating records in 'Counter' table...");
             
-            long removedCount;
-
-            do
+            using (var storageConnection = (MongoConnection)_storage.GetConnection())
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                HangfireDbContext database = storageConnection.Database;
 
-                using (var storageConnection = (MongoConnection)_storage.GetConnection())
-                {
-                    HangfireDbContext database = storageConnection.Database;
-
-                    var stats = database.Counter.AsQueryable()
-                        .Take(NumberOfRecordsInSinglePass)
-                        .GroupBy(_ => _.Key)
-                        .Select(g => new
-                        {
-                            Key = g.Key,
-                            Ids = g.Select(_ => _.Id),
-                            Value = g.Sum(_ => _.Value),
-                            ExpireAt = g.Max(_ => _.ExpireAt)
-                        })
-                        .ToArray();
-
-                    removedCount = 0;
-
-                    foreach (var item in stats)
+                var stats = database.Counter.AsQueryable()
+                    .GroupBy(_ => _.Key)
+                    .Select(g => new
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        // update aggregated counter
-                        database.AggregatedCounter.UpdateOne(
-                            Builders<AggregatedCounterDto>.Filter.Eq(_ => _.Key, item.Key),
-                            Builders<AggregatedCounterDto>.Update.Inc(_ => _.Value, item.Value)
-                                                                 .Max(_ => _.ExpireAt, item.ExpireAt),
-                            new UpdateOptions { IsUpsert = true }, cancellationToken);
-
-                        // delete corresponding counter records
-                        removedCount += database.Counter.DeleteMany(
-                            Builders<CounterDto>.Filter.Eq(_ => _.Key, item.Key) &
-                            Builders<CounterDto>.Filter.In(_ => _.Id, item.Ids)).DeletedCount;
-                    }
-
-                    if (removedCount >= NumberOfRecordsInSinglePass)
-                    {
-                        cancellationToken.WaitHandle.WaitOne(DelayBetweenPasses);
-                        cancellationToken.ThrowIfCancellationRequested();
-                    }
-                }
+                        Key = g.Key,
+                        // Hangfire's collections shouldn't be sharded!
+                        // so max(id) is a good enough boundary
+                        LastId = g.Max(_ => _.Id),
+                        Value = g.Sum(_ => _.Value),
+                        ExpireAt = g.Max(_ => _.ExpireAt)
+                    })
+                    .ToArray();
                 
-            } while (removedCount >= NumberOfRecordsInSinglePass);
+                foreach (var item in stats)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // update aggregated counter
+                    database.AggregatedCounter.UpdateOne(
+                        Builders<AggregatedCounterDto>.Filter.Eq(_ => _.Key, item.Key),
+                        Builders<AggregatedCounterDto>.Update.Inc(_ => _.Value, item.Value)
+                                                             .Max(_ => _.ExpireAt, item.ExpireAt),
+                        new UpdateOptions { IsUpsert = true });
+
+                    // delete corresponding counter records
+                    database.Counter.DeleteMany(
+                        Builders<CounterDto>.Filter.Eq(_ => _.Key, item.Key) &
+                        Builders<CounterDto>.Filter.Lte(_ => _.Id, item.LastId));
+                }
+            }
 
             cancellationToken.WaitHandle.WaitOne(_interval);
         }
