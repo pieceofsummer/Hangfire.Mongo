@@ -181,7 +181,7 @@ namespace Hangfire.Mongo
 
         public JobList<ProcessingJobDto> ProcessingJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobs(
+            return UseConnection(connection => GetJobsByStateName(
                 connection,
                 from, count,
                 ProcessingState.StateName,
@@ -195,7 +195,7 @@ namespace Hangfire.Mongo
 
         public JobList<ScheduledJobDto> ScheduledJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobs(connection, from, count, ScheduledState.StateName,
+            return UseConnection(connection => GetJobsByStateName(connection, from, count, ScheduledState.StateName,
                 (detailedJob, job, stateData) => new ScheduledJobDto
                 {
                     Job = job,
@@ -206,7 +206,7 @@ namespace Hangfire.Mongo
 
         public JobList<SucceededJobDto> SucceededJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobs(connection, from, count, SucceededState.StateName,
+            return UseConnection(connection => GetJobsByStateName(connection, from, count, SucceededState.StateName,
                 (detailedJob, job, stateData) => new SucceededJobDto
                 {
                     Job = job,
@@ -220,7 +220,7 @@ namespace Hangfire.Mongo
 
         public JobList<FailedJobDto> FailedJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobs(connection, from, count, FailedState.StateName,
+            return UseConnection(connection => GetJobsByStateName(connection, from, count, FailedState.StateName,
                 (detailedJob, job, stateData) => new FailedJobDto
                 {
                     Job = job,
@@ -234,7 +234,7 @@ namespace Hangfire.Mongo
 
         public JobList<DeletedJobDto> DeletedJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobs(connection, from, count, DeletedState.StateName,
+            return UseConnection(connection => GetJobsByStateName(connection, from, count, DeletedState.StateName,
                 (detailedJob, job, stateData) => new DeletedJobDto
                 {
                     Job = job,
@@ -411,14 +411,15 @@ namespace Hangfire.Mongo
                     new FetchedJobDto
                     {
                         Job = DeserializeJob(job.InvocationData, job.Arguments),
-                        State = job.StateName
+                        State = job.StateName,
+                        FetchedAt = job.FetchedAt
                     }));
             }
 
             return new JobList<FetchedJobDto>(result);
         }
 
-        private static JobList<TDto> GetJobs<TDto>(HangfireDbContext connection, int from, int count, string stateName, Func<JobDetailedDto, Job, Dictionary<string, string>, TDto> selector)
+        private static JobList<TDto> GetJobsByStateName<TDto>(HangfireDbContext connection, int from, int count, string stateName, Func<JobDetailedDto, Job, Dictionary<string, string>, TDto> selector)
         {
             var jobs = connection.Job.AsQueryable()
                 .Where(_ => _.StateName == stateName)
@@ -444,41 +445,32 @@ namespace Hangfire.Mongo
         
         private static long GetNumberOfJobsByStateName(HangfireDbContext connection, string stateName)
         {
-            var count = connection.Job.Count(Builders<JobDto>.Filter.Eq(_ => _.StateName, stateName));
+            var count = connection.Job.AsQueryable().Count(_ => _.StateName == stateName);
             return count;
         }
 
         private Dictionary<DateTime, long> GetTimelineStats(HangfireDbContext connection, string type)
         {
             var endDate = connection.Database.GetServerTimeUtc().Date;
-            var startDate = endDate.AddDays(-7);
-            var dates = new List<DateTime>();
 
-            while (startDate <= endDate)
+            var dates = new List<DateTime>(7);
+            var keys = new List<string>(7);
+
+            for (int i = 0; i < 7; i++)
             {
                 dates.Add(endDate);
+                keys.Add($"stats:{type}:{endDate.ToString("yyyy-MM-dd")}");
                 endDate = endDate.AddDays(-1);
             }
-
-            var stringDates = dates.Select(x => x.ToString("yyyy-MM-dd")).ToList();
-            var keys = stringDates.Select(x => $"stats:{type}:{x}").ToList();
-
-            var valuesMap = connection.AggregatedCounter
-                .Find(Builders<AggregatedCounterDto>.Filter.In(_ => _.Key, keys))
-                .ToList()
-                .GroupBy(x => x.Key)
-                .ToDictionary(x => x.Key, x => (long)x.Count());
-
-            foreach (var key in keys)
-            {
-                if (!valuesMap.ContainsKey(key)) valuesMap.Add(key, 0);
-            }
+            
+            var values = connection.AggregatedCounter.AsQueryable()
+                .Where(_ => keys.Contains(_.Key))
+                .ToDictionary(x => x.Key, x => x.Value);
 
             var result = new Dictionary<DateTime, long>();
-            for (var i = 0; i < stringDates.Count; i++)
+            for (var i = 0; i < dates.Count; i++)
             {
-                var value = valuesMap[valuesMap.Keys.ElementAt(i)];
-                result.Add(dates[i], value);
+                result.Add(dates[i], values.TryGetValue(keys[i]));
             }
 
             return result;
@@ -487,30 +479,25 @@ namespace Hangfire.Mongo
         private Dictionary<DateTime, long> GetHourlyTimelineStats(HangfireDbContext connection, string type)
         {
             var endDate = connection.Database.GetServerTimeUtc();
-            var dates = new List<DateTime>();
+
+            var dates = new List<DateTime>(24);
+            var keys = new List<string>(24);
+
             for (var i = 0; i < 24; i++)
             {
                 dates.Add(endDate);
+                keys.Add($"stats:{type}:{endDate.ToString("yyyy-MM-dd-HH")}");
                 endDate = endDate.AddHours(-1);
             }
-
-            var keys = dates.Select(x => $"stats:{type}:{x:yyyy-MM-dd-HH}").ToList();
-
-            var valuesMap = connection.Counter.Find(Builders<CounterDto>.Filter.In(_ => _.Key, keys))
-                .ToList()
-                .GroupBy(x => x.Key, x => x)
-                .ToDictionary(x => x.Key, x => (long)x.Count());
-
-            foreach (var key in keys.Where(key => !valuesMap.ContainsKey(key)))
-            {
-                valuesMap.Add(key, 0);
-            }
-
+            
+            var values = connection.AggregatedCounter.AsQueryable()
+                .Where(_ => keys.Contains(_.Key))
+                .ToDictionary(x => x.Key, x => x.Value);
+            
             var result = new Dictionary<DateTime, long>();
             for (var i = 0; i < dates.Count; i++)
             {
-                var value = valuesMap[valuesMap.Keys.ElementAt(i)];
-                result.Add(dates[i], value);
+                result.Add(dates[i], values.TryGetValue(keys[i]));
             }
 
             return result;

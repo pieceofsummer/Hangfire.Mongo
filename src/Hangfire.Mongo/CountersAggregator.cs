@@ -53,7 +53,7 @@ namespace Hangfire.Mongo
         public void Execute(CancellationToken cancellationToken)
         {
             Logger.DebugFormat("Aggregating records in 'Counter' table...");
-            
+
             using (var storageConnection = (MongoConnection)_storage.GetConnection())
             {
                 HangfireDbContext database = storageConnection.Database;
@@ -69,8 +69,8 @@ namespace Hangfire.Mongo
                         Value = g.Sum(_ => _.Value),
                         ExpireAt = g.Max(_ => _.ExpireAt)
                     })
-                    .ToArray();
-                
+                    .ToList();
+
                 foreach (var item in stats)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
