@@ -6,7 +6,6 @@ using Hangfire.Common;
 using Hangfire.Mongo.Database;
 using Hangfire.Mongo.DistributedLock;
 using Hangfire.Mongo.Dto;
-using Hangfire.Mongo.MongoUtils;
 using Hangfire.Mongo.PersistentJobQueue;
 using Hangfire.Server;
 using Hangfire.Storage;

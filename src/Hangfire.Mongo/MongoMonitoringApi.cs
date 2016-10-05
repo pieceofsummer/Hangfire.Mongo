@@ -4,7 +4,6 @@ using System.Linq;
 using Hangfire.Common;
 using Hangfire.Mongo.Database;
 using Hangfire.Mongo.Dto;
-using Hangfire.Mongo.MongoUtils;
 using Hangfire.Mongo.PersistentJobQueue;
 using Hangfire.States;
 using Hangfire.Storage;
@@ -451,7 +450,7 @@ namespace Hangfire.Mongo
 
         private Dictionary<DateTime, long> GetTimelineStats(HangfireDbContext connection, string type)
         {
-            var endDate = connection.Database.GetServerTimeUtc().Date;
+            var endDate = connection.GetServerTimeUtc().Date;
 
             var dates = new List<DateTime>(7);
             var keys = new List<string>(7);
@@ -478,7 +477,7 @@ namespace Hangfire.Mongo
 
         private Dictionary<DateTime, long> GetHourlyTimelineStats(HangfireDbContext connection, string type)
         {
-            var endDate = connection.Database.GetServerTimeUtc();
+            var endDate = connection.GetServerTimeUtc();
 
             var dates = new List<DateTime>(24);
             var keys = new List<string>(24);

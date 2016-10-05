@@ -2,7 +2,6 @@
 using System.Linq;
 using System.Threading;
 using Hangfire.Mongo.Dto;
-using Hangfire.Mongo.MongoUtils;
 using Hangfire.Mongo.PersistentJobQueue.Mongo;
 using Hangfire.Mongo.Tests.Utils;
 using MongoDB.Bson;

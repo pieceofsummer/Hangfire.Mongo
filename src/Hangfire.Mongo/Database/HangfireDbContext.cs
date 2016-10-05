@@ -3,6 +3,9 @@ using Hangfire.Mongo.Dto;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System.Linq.Expressions;
+using MongoDB.Driver.Core.Configuration;
+using MongoDB.Driver.Core.Events;
+using System.Diagnostics;
 
 namespace Hangfire.Mongo.Database
 {
@@ -25,14 +28,8 @@ namespace Hangfire.Mongo.Database
         /// <param name="databaseName">Database name</param>
         /// <param name="prefix">Collections prefix</param>
         public HangfireDbContext(string connectionString, string databaseName, string prefix = "hangfire")
+            : this(MongoClientSettings.FromUrl(MongoUrl.Create(connectionString)), databaseName, prefix)
         {
-            _prefix = prefix;
-
-            MongoClient client = new MongoClient(connectionString);
-
-            Database = client.GetDatabase(databaseName);
-
-            ConnectionId = Guid.NewGuid().ToString();
         }
 
 		/// <summary>
@@ -45,8 +42,10 @@ namespace Hangfire.Mongo.Database
 		{
 			_prefix = prefix;
 
-			MongoClient client = new MongoClient(mongoClientSettings);
+            mongoClientSettings.ClusterConfigurator = ClasterBuilderCallback;
 
+			MongoClient client = new MongoClient(mongoClientSettings);
+            
             Database = client.GetDatabase(databaseName);
 
 			ConnectionId = Guid.NewGuid().ToString();
@@ -61,6 +60,163 @@ namespace Hangfire.Mongo.Database
             Database = database;
             ConnectionId = Guid.NewGuid().ToString();
         }
+        
+        private void ClasterBuilderCallback(ClusterBuilder builder)
+        {
+            //builder.Subscribe<ConnectionSentMessagesEvent>(OnSentMessages);
+            //builder.Subscribe<ConnectionReceivedMessageEvent>(OnReceivedMessage);
+            //builder.Subscribe<ClusterSelectedServerEvent>(OnServerSelected);
+
+            builder.Subscribe<CommandStartedEvent>(OnCommandStarted);
+            builder.Subscribe<CommandSucceededEvent>(OnCommandSucceeded);
+            builder.Subscribe<CommandFailedEvent>(OnCommandFailed);
+        }
+
+        private void OnCommandStarted(CommandStartedEvent e)
+        {
+            Debug.WriteLineIf(e.OperationId.HasValue, $"< [{e.OperationId}] {e.CommandName}: {e.Command}");
+        }
+
+        private void OnCommandSucceeded(CommandSucceededEvent e)
+        {
+            // capture local time as soon as reply is received to minimize errors
+            var now = DateTime.UtcNow;
+
+            Debug.WriteLineIf(e.OperationId.HasValue, $"> [{e.OperationId}] {e.CommandName} OK in {e.Duration}: {e.Reply}");
+            
+            if (e.CommandName == "isMaster")
+            {
+                UpdateServerTimeFromReply(now, e.Reply);
+            }
+            else if (e.CommandName == "buildInfo")
+            {
+                UpdateServerInfoFromReply(now, e.Reply);
+            }
+        }
+
+        private void OnCommandFailed(CommandFailedEvent e)
+        {
+            Debug.WriteLineIf(e.OperationId.HasValue, $"> [{e.OperationId}] {e.CommandName} ERR in {e.Duration}: {e.Failure}");
+        }
+
+        #region ServerVersion tracking
+
+        private DateTime? _serverInfoReceived = null;
+        private Version _serverVersion = null;
+        
+        private void UpdateServerInfoFromReply(DateTime now, BsonDocument reply)
+        {
+            BsonValue value;
+
+            if (reply.TryGetValue("versionArray", out value))
+            {
+                var versionArray = value.AsBsonArray;
+
+                var revision = versionArray[3].AsInt32;
+
+                _serverVersion = new Version(
+                    versionArray[0].AsInt32,    // major
+                    versionArray[1].AsInt32,    // minor
+                    versionArray[2].AsInt32);   // revision
+
+                // do not log too often
+                Debug.WriteLineIf(
+                    !_serverTimeReceived.HasValue || (now - _serverTimeReceived.Value) > TimeSpan.FromSeconds(5),
+                    $"[{now}] Updated version from server: {_serverVersion}");
+
+                _serverInfoReceived = now;
+            }
+        }
+        
+        /// <summary>
+        /// Returns server version, as reported by buildInfo()
+        /// </summary>
+        /// <returns></returns>
+        public Version GetServerVersion()
+        {
+            if (_serverVersion == null)
+            {
+                // not received version yet
+                // in reality this should never happen, because server report 'buildInfo' often
+                // but let's heep it be here, in case command callbacks were disabled
+
+                var reply = Database.RunCommand<BsonDocument>(new BsonDocument("buildInfo", 1));
+
+                if (_serverVersion != null)
+                {
+                    // Command handler has already updated info, updating it once again is pointless
+                }
+                else
+                {
+                    // No command handler present for some reason, perform an update
+                    UpdateServerInfoFromReply(DateTime.UtcNow, reply);
+                }
+            }
+
+            return _serverVersion;
+        }
+
+        #endregion
+
+        #region ServerTime tracking
+
+        private DateTime? _serverTimeReceived = null;
+        private DateTime _serverTime;
+
+        private void UpdateServerTimeFromReply(DateTime now, BsonDocument reply)
+        {
+            BsonValue value;
+            if (reply.TryGetValue("localTime", out value))
+            {
+                _serverTime = value.ToUniversalTime();
+
+                // do not log too often
+                Debug.WriteLineIf(
+                    !_serverTimeReceived.HasValue || (now - _serverTimeReceived.Value) > TimeSpan.FromSeconds(5),
+                    $"[{now}] Updated time from server: {_serverTime}");
+                
+                _serverTimeReceived = now;
+            }
+        }
+
+        /// <summary>
+        /// Returns local time on server, as reported by isMaster()
+        /// </summary>
+        [DebuggerStepThrough]
+        public DateTime GetServerTimeUtc()
+        {
+            var requestTime = DateTime.UtcNow;
+
+            if (!_serverTimeReceived.HasValue || 
+                requestTime - _serverTimeReceived.Value > TimeSpan.FromMinutes(10))
+            {
+                // not received time yet, or value is too old
+                // in reality this should never happen, because server reports 'isMaster' often
+                // but let's heep it be here, in case command callbacks were disabled
+
+                Debug.WriteLine("Forcing time request from server");
+
+                var reply = Database.RunCommand<BsonDocument>(new BsonDocument("isMaster", 1));
+                
+                if (_serverTimeReceived.HasValue && 
+                    _serverTimeReceived.Value > requestTime)
+                {
+                    // Command handler has already updated time, updating it once again will only hurt precision
+                }
+                else
+                {
+                    // No command handler present for some reason, perform an update
+                    UpdateServerTimeFromReply(DateTime.UtcNow, reply);
+                }
+
+                // update now, so we calculate gap correctly
+                requestTime = DateTime.UtcNow;
+            }
+
+            return _serverTime + (requestTime - _serverTimeReceived.Value);
+        }
+
+        #endregion
 
         /// <summary>
         /// Mongo database connection identifier

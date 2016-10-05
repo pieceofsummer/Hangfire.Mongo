@@ -3,7 +3,6 @@ using System.Diagnostics;
 using Hangfire.Common;
 using Hangfire.Mongo.Database;
 using Hangfire.Mongo.Dto;
-using Hangfire.Mongo.MongoUtils;
 using Hangfire.Mongo.Tests.Utils;
 using Hangfire.States;
 using Hangfire.Storage;
