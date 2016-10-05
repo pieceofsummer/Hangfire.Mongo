@@ -12,40 +12,27 @@ namespace Hangfire.Mongo
     public sealed class MongoFetchedJob : IFetchedJob
     {
         private readonly HangfireDbContext _connection;
-
         private bool _disposed;
-
-        private bool _removedFromQueue;
-
-        private bool _requeued;
+        private bool _updated;
 
         /// <summary>
         /// Constructs fetched job by database connection, identifier, job ID and queue
         /// </summary>
         /// <param name="connection">Database connection</param>
-        /// <param name="id">Identifier</param>
         /// <param name="jobId">Job ID</param>
         /// <param name="queue">Queue name</param>
-        public MongoFetchedJob(HangfireDbContext connection, string id, string jobId, string queue)
+        public MongoFetchedJob(HangfireDbContext connection, string jobId, string queue)
         {
             if (connection == null) throw new ArgumentNullException(nameof(connection));
-            if (string.IsNullOrEmpty(id)) throw new ArgumentNullException(nameof(id));
             if (string.IsNullOrEmpty(jobId)) throw new ArgumentNullException(nameof(jobId));
             if (string.IsNullOrEmpty(queue)) throw new ArgumentNullException(nameof(queue));
 
             _connection = connection;
-
-            Id = id;
+            
             JobId = jobId;
             Queue = queue;
         }
-
-
-        /// <summary>
-        /// Identifier
-        /// </summary>
-        public string Id { get; private set; }
-
+        
         /// <summary>
         /// Job ID
         /// </summary>
@@ -55,16 +42,25 @@ namespace Hangfire.Mongo
         /// Queue name
         /// </summary>
         public string Queue { get; private set; }
+        
+        /// <summary>
+        /// Removes/requeues job as an atomic operation
+        /// </summary>
+        private void UpdateJob(bool requeue)
+        {
+            _connection.Job.UpdateOne(
+                Builders<JobDto>.Filter.Eq(_ => _.Id, JobId),
+                Builders<JobDto>.Update.Set(_ => _.FetchedAt, null)
+                                       .Set(_ => _.Queue, requeue ? Queue : null));
+        }
 
         /// <summary>
         /// Removes fetched job from a queue
         /// </summary>
         public void RemoveFromQueue()
         {
-            _connection.JobQueue.DeleteOne(
-                Builders<JobQueueDto>.Filter.Eq(_ => _.Id, Id));
-
-            _removedFromQueue = true;
+            UpdateJob(false);
+            _updated = true;
         }
 
         /// <summary>
@@ -72,11 +68,8 @@ namespace Hangfire.Mongo
         /// </summary>
         public void Requeue()
         {
-            _connection.JobQueue.UpdateOne(
-                Builders<JobQueueDto>.Filter.Eq(_ => _.Id, Id),
-                Builders<JobQueueDto>.Update.Set(_ => _.FetchedAt, null));
-
-            _requeued = true;
+            UpdateJob(true);
+            _updated = true;
         }
 
         /// <summary>
@@ -86,8 +79,11 @@ namespace Hangfire.Mongo
         {
             if (_disposed) return;
 
-            if (!_removedFromQueue && !_requeued)
+            if (!_updated)
             {
+                // if the job was not explicitly updated 
+                // (either removed or requeued), 
+                // then requeue it by default
                 Requeue();
             }
 

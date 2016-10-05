@@ -47,7 +47,7 @@ namespace Hangfire.Mongo.Database
 
 			MongoClient client = new MongoClient(mongoClientSettings);
 
-			Database = client.GetDatabase(databaseName);
+            Database = client.GetDatabase(databaseName);
 
 			ConnectionId = Guid.NewGuid().ToString();
 		}
@@ -103,13 +103,7 @@ namespace Hangfire.Mongo.Database
         /// </summary>
         internal virtual IMongoCollection<JobParameterDto> JobParameter
             => Database.GetCollection<JobParameterDto>(_prefix + ".jobParameter");
-
-	    /// <summary>
-        /// Reference to collection which contains jobs queues
-        /// </summary>
-        internal virtual IMongoCollection<JobQueueDto> JobQueue
-            => Database.GetCollection<JobQueueDto>(_prefix + ".jobQueue");
-
+        
 	    /// <summary>
         /// Reference to collection which contains lists
         /// </summary>
@@ -172,7 +166,6 @@ namespace Hangfire.Mongo.Database
             CreateIndex(Counter, "ix_key", ix => ix.Ascending(_ => _.Key));
             CreateIndex(Hash, "ix_key_field", ix => ix.Ascending(_ => _.Key).Ascending(_ => _.Field));
             CreateIndex(JobParameter, "ix_jobId_name", ix => ix.Descending(_ => _.JobId).Ascending(_ => _.Name));
-            CreateIndex(JobQueue, "ix_queue", ix => ix.Ascending(_ => _.Queue));
             CreateIndex(List, "ix_key", ix => ix.Ascending(_ => _.Key));
             CreateIndex(Set, "ix_key", ix => ix.Ascending(_ => _.Key));
             CreateIndex(State, "ix_jobId", ix => ix.Descending(_ => _.JobId));

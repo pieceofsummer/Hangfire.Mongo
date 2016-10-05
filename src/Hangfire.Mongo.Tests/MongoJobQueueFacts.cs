@@ -143,44 +143,24 @@ namespace Hangfire.Mongo.Tests
             // Arrange
             UseConnection((connection, queue) =>
             {
-                var jobQueue = new JobQueueDto
-                {
-                    JobId = ObjectId.GenerateNewId().ToString(),
-                    Queue = "default"
-                };
-
-                connection.JobQueue.InsertOne(jobQueue);
+                var jobId = CreateJobRecord(connection, "default");
                 
                 // Act
                 var fetchedJob = (MongoFetchedJob)queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
 
                 // Assert
-                Assert.Equal(jobQueue.Id, fetchedJob.Id);
-                Assert.Equal(jobQueue.JobId, fetchedJob.JobId);
+                Assert.Equal(jobId, fetchedJob.JobId);
                 Assert.Equal("default", fetchedJob.Queue);
             });
         }
 
         [Fact, CleanDatabase]
-        public void Dequeue_ShouldLeaveJobInTheQueue_ButSetItsFetchedAtValue()
+        public void Dequeue_PreservesQueueButSetsFetchedAt()
         {
             // Arrange
             UseConnection((connection, queue) =>
             {
-                var job = new JobDto
-                {
-                    InvocationData = "",
-                    Arguments = "",
-                    CreatedAt = connection.GetServerTimeUtc()
-                };
-                connection.Job.InsertOne(job);
-
-                var jobQueue = new JobQueueDto
-                {
-                    JobId = job.Id,
-                    Queue = "default"
-                };
-                connection.JobQueue.InsertOne(jobQueue);
+                var jobId = CreateJobRecord(connection, "default");
                 
                 // Act
                 var fetchedJob = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
@@ -188,15 +168,16 @@ namespace Hangfire.Mongo.Tests
                 // Assert
                 Assert.NotNull(fetchedJob);
 
-                var fetchedAt = connection.JobQueue.AsQueryable().Single(_ => _.JobId == fetchedJob.JobId).FetchedAt;
+                var record = connection.Job.AsQueryable().Single(_ => _.Id == fetchedJob.JobId);
 
-                Assert.NotNull(fetchedAt);
-                Assert.True(fetchedAt > DateTime.UtcNow.AddMinutes(-1));
+                Assert.Equal("default", record.Queue);
+                Assert.NotNull(record.FetchedAt);
+                Assert.True(record.FetchedAt > DateTime.UtcNow.AddMinutes(-1));
             });
         }
 
         [Fact, CleanDatabase]
-        public void Dequeue_ShouldFetchATimedOutJobs_FromTheSpecifiedQueue()
+        public void Dequeue_ShouldFetchTimedOutJobs_FromTheSpecifiedQueue()
         {
             // Arrange
             UseConnection((connection, queue) =>
@@ -205,17 +186,11 @@ namespace Hangfire.Mongo.Tests
                 {
                     InvocationData = "",
                     Arguments = "",
-                    CreatedAt = connection.GetServerTimeUtc()
+                    CreatedAt = DateTime.UtcNow,
+                    Queue = "default",
+                    FetchedAt = DateTime.UtcNow.AddDays(-1)
                 };
                 connection.Job.InsertOne(job);
-
-                var jobQueue = new JobQueueDto
-                {
-                    JobId = job.Id,
-                    Queue = "default",
-                    FetchedAt = connection.GetServerTimeUtc().AddDays(-1)
-                };
-                connection.JobQueue.InsertOne(jobQueue);
                 
                 // Act
                 var fetchedJob = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
@@ -231,40 +206,16 @@ namespace Hangfire.Mongo.Tests
             // Arrange
             UseConnection((connection, queue) =>
             {
-                var job1 = new JobDto
-                {
-                    InvocationData = "",
-                    Arguments = "",
-                    CreatedAt = connection.GetServerTimeUtc()
-                };
-                connection.Job.InsertOne(job1);
+                var jobId1 = CreateJobRecord(connection, "critical");
 
-                var job2 = new JobDto
-                {
-                    InvocationData = "",
-                    Arguments = "",
-                    CreatedAt = connection.GetServerTimeUtc()
-                };
-                connection.Job.InsertOne(job2);
-
-                connection.JobQueue.InsertOne(new JobQueueDto
-                {
-                    JobId = job1.Id,
-                    Queue = "default"
-                });
-
-                connection.JobQueue.InsertOne(new JobQueueDto
-                {
-                    JobId = job2.Id,
-                    Queue = "default"
-                });
+                var jobId2 = CreateJobRecord(connection, "default");
                 
                 // Act
                 var fetchedJob = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
 
                 // Assert
-                var unfetchedJob = connection.JobQueue.AsQueryable().Single(_ => _.JobId != fetchedJob.JobId);
-                
+                var unfetchedJob = connection.Job.AsQueryable().Single(_ => _.Id != fetchedJob.JobId);
+
                 Assert.Null(unfetchedJob.FetchedAt);
             });
         }
@@ -274,75 +225,20 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection((connection, queue) =>
             {
-                var job1 = new JobDto
-                {
-                    InvocationData = "",
-                    Arguments = "",
-                    CreatedAt = connection.GetServerTimeUtc()
-                };
-                connection.Job.InsertOne(job1);
-
-                connection.JobQueue.InsertOne(new JobQueueDto
-                {
-                    JobId = job1.Id,
-                    Queue = "critical"
-                });
+                var jobId = CreateJobRecord(connection, "critical");
                 
                 Assert.Throws<OperationCanceledException>(
                     () => queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken()));
             });
         }
-
-        [Fact, CleanDatabase]
-        public void Dequeue_ShouldFetchJobs_FromMultipleQueuesBasedOnQueuePriority()
-        {
-            UseConnection((connection, queue) =>
-            {
-                var criticalJob = new JobDto
-                {
-                    InvocationData = "",
-                    Arguments = "",
-                    CreatedAt = connection.GetServerTimeUtc()
-                };
-                connection.Job.InsertOne(criticalJob);
-
-                var defaultJob = new JobDto
-                {
-                    InvocationData = "",
-                    Arguments = "",
-                    CreatedAt = connection.GetServerTimeUtc()
-                };
-                connection.Job.InsertOne(defaultJob);
-
-                connection.JobQueue.InsertOne(new JobQueueDto
-                {
-                    JobId = defaultJob.Id,
-                    Queue = "default"
-                });
-
-                connection.JobQueue.InsertOne(new JobQueueDto
-                {
-                    JobId = criticalJob.Id,
-                    Queue = "critical"
-                });
-                
-                var critical = (MongoFetchedJob)queue.Dequeue(new[] { "critical", "default" }, CreateTimingOutCancellationToken());
-                Assert.Equal(criticalJob.Id, critical.JobId);
-                Assert.Equal("critical", critical.Queue);
-
-                var @default = (MongoFetchedJob)queue.Dequeue(new[] { "critical", "default" }, CreateTimingOutCancellationToken());
-                Assert.Equal(defaultJob.Id, @default.JobId);
-                Assert.Equal("default", @default.Queue);
-            });
-        }
-
+        
         [Fact, CleanDatabase]
         public void Dequeue_ShouldFetchJobs_OnAllWaitingThreads_WhenNotified()
         {
             UseConnection((connection, queue) =>
             {
-                var defaultJobId = ObjectId.GenerateNewId().ToString();
-                var customJobId = ObjectId.GenerateNewId().ToString();
+                var defaultJobId = CreateJobRecord(connection, null);
+                var customJobId = CreateJobRecord(connection, null);
 
                 var cts = new CancellationTokenSource(1000);
                 IFetchedJob defaultJob = null, customJob = null;
@@ -356,7 +252,7 @@ namespace Hangfire.Mongo.Tests
                             var job = queue.Dequeue(DefaultQueues, cts.Token);
                             if (job == null)
                                 throw new InvalidOperationException("dequeued a null job");
-
+                            
                             if (Interlocked.CompareExchange(ref defaultJob, job, null) != null)
                                 throw new InvalidOperationException("defaultJob was already assigned");
 
@@ -375,6 +271,8 @@ namespace Hangfire.Mongo.Tests
                     queue.NotifyQueueChanged();
                 }
 
+                Assert.Equal(defaultJobId, defaultJob.JobId);
+
                 Assert.NotNull(defaultJob);
                 Assert.Equal(defaultJobId, defaultJob.JobId);
 
@@ -388,14 +286,29 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection((connection, queue) =>
             {
-                var jobId = ObjectId.GenerateNewId().ToString();
+                var jobId = CreateJobRecord(connection, null);
+                
                 queue.Enqueue("default", jobId);
 
-                var fetchedJob = connection.JobQueue.AsQueryable().Single();
-                Assert.Equal(jobId, fetchedJob.JobId);
+                var fetchedJob = connection.Job.AsQueryable().Single();
+
+                Assert.Equal(jobId, fetchedJob.Id);
                 Assert.Equal("default", fetchedJob.Queue);
                 Assert.Null(fetchedJob.FetchedAt);
             });
+        }
+        
+        private static string CreateJobRecord(HangfireDbContext connection, string queue)
+        {
+            var job = new JobDto
+            {
+                InvocationData = "",
+                Arguments = "",
+                Queue = queue
+            };
+
+            connection.Job.InsertOne(job);
+            return job.Id;
         }
 
         private static CancellationToken CreateTimingOutCancellationToken()

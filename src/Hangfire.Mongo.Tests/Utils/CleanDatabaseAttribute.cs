@@ -39,7 +39,6 @@ namespace Hangfire.Mongo.Tests.Utils
                     context.Hash.DeleteMany(new BsonDocument());
                     context.Job.DeleteMany(new BsonDocument());
                     context.JobParameter.DeleteMany(new BsonDocument());
-                    context.JobQueue.DeleteMany(new BsonDocument());
                     context.List.DeleteMany(new BsonDocument());
                     context.Server.DeleteMany(new BsonDocument());
                     context.Set.DeleteMany(new BsonDocument());

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Hangfire.Mongo.Database;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using System.Linq;
+using MongoDB.Driver.Linq;
 
 namespace Hangfire.Mongo.MongoUtils
 {
@@ -36,5 +38,6 @@ namespace Hangfire.Mongo.MongoUtils
         {
             return GetServerTimeUtc(dbContext.Database);
         }
+        
     }
 }

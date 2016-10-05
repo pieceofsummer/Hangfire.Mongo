@@ -46,17 +46,17 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var fetchedJob = _storage.Connection.JobQueue.FindOneAndUpdate(
-                    Builders<JobQueueDto>.Filter.In(_ => _.Queue, queues) &
-                    (Builders<JobQueueDto>.Filter.Eq(_ => _.FetchedAt, null) |
-                     Builders<JobQueueDto>.Filter.Lt(_ => _.FetchedAt, _storage.Connection.GetServerTimeUtc() - _options.InvisibilityTimeout)),
-                    Builders<JobQueueDto>.Update.CurrentDate(_ => _.FetchedAt),
-                    new FindOneAndUpdateOptions<JobQueueDto> { ReturnDocument = ReturnDocument.After }, 
+                var fetchedJob = _storage.Connection.Job.FindOneAndUpdate(
+                    Builders<JobDto>.Filter.In(_ => _.Queue, queues) &
+                    (Builders<JobDto>.Filter.Eq(_ => _.FetchedAt, null) |
+                     Builders<JobDto>.Filter.Lt(_ => _.FetchedAt, _storage.Connection.GetServerTimeUtc() - _options.InvisibilityTimeout)),
+                    Builders<JobDto>.Update.CurrentDate(_ => _.FetchedAt),
+                    new FindOneAndUpdateOptions<JobDto> { ReturnDocument = ReturnDocument.After }, 
                     cancellationToken);
 
                 if (fetchedJob != null)
                 {
-                    return new MongoFetchedJob(_storage.Connection, fetchedJob.Id, fetchedJob.JobId, fetchedJob.Queue);
+                    return new MongoFetchedJob(_storage.Connection, fetchedJob.Id, fetchedJob.Queue);
                 }
 
                 var triggerId = WaitHandle.WaitAny(triggers, _options.QueuePollInterval);
@@ -74,11 +74,10 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
             if (_disposed)
                 throw new ObjectDisposedException(nameof(MongoJobQueue));
 
-            _storage.Connection.JobQueue.InsertOne(new JobQueueDto
-            {
-                JobId = jobId,
-                Queue = queue
-            });
+            _storage.Connection.Job.UpdateOne(
+                Builders<JobDto>.Filter.Eq(_ => _.Id, jobId),
+                Builders<JobDto>.Update.Set(_ => _.Queue, queue)
+                                       .Set(_ => _.FetchedAt, null));
         }
 
         public void NotifyQueueChanged()

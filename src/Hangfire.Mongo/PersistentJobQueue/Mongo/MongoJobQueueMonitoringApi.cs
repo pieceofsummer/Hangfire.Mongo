@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using MongoDB.Driver;
+using MongoDB.Driver.Linq;
 
 namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 {
@@ -22,7 +23,8 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 
         public IEnumerable<string> GetQueues()
         {
-            return _storage.Connection.JobQueue.AsQueryable()
+            return _storage.Connection.Job.AsQueryable()
+                .Where(_ => _.Queue != null)
                 .GroupBy(_ => _.Queue)
                 .Select(g => g.Key)
                 .ToList();
@@ -30,10 +32,10 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 
         public IEnumerable<string> GetEnqueuedJobIds(string queue, int from, int perPage)
         {
-            return _storage.Connection.JobQueue.AsQueryable()
+            return _storage.Connection.Job.AsQueryable()
                 .Where(_ => _.Queue == queue && _.FetchedAt == null)
                 .OrderBy(_ => _.Id)
-                .Select(_ => _.JobId)
+                .Select(_ => _.Id)
                 .Skip(from)
                 .Take(perPage)
                 .ToList();
@@ -43,10 +45,10 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
         {
             // TODO: Hangfire.SqlServer has deprecated dividing queue into enqueued/fetched jobs, probably we should too
 
-            return _storage.Connection.JobQueue.AsQueryable()
+            return _storage.Connection.Job.AsQueryable()
                 .Where(_ => _.Queue == queue && _.FetchedAt != null)
                 .OrderBy(_ => _.Id)
-                .Select(_ => _.JobId)
+                .Select(_ => _.Id)
                 .Skip(from)
                 .Take(perPage)
                 .ToList();

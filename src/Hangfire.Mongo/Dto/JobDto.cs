@@ -27,5 +27,11 @@ namespace Hangfire.Mongo.Dto
 
         [BsonIgnoreIfNull]
         public DateTime? ExpireAt { get; set; }
+
+        [BsonIgnoreIfNull]
+        public string Queue { get; set; }
+
+        [BsonIgnoreIfNull]
+        public DateTime? FetchedAt { get; set; }
     }
 }

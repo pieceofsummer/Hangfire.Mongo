@@ -223,18 +223,12 @@ namespace Hangfire.Mongo.Tests
                 Arguments = "['\\\"Arguments\\\"']",
                 StateName = stateName,
                 CreatedAt = createdAt,
-                StateId = jobState.Id
+                StateId = jobState.Id,
+                Queue = DefaultQueue,
+                FetchedAt = stateName == FetchedStateName ? (DateTime?)createdAt : null
             };
             database.Job.InsertOne(jobDto);
-
-            var jobQueueDto = new JobQueueDto
-            {
-                FetchedAt = stateName == FetchedStateName ? (DateTime?)createdAt : null,
-                JobId = jobId,
-                Queue = DefaultQueue
-            };
-            database.JobQueue.InsertOne(jobQueueDto);
-
+            
             return jobDto;
         }
     }
