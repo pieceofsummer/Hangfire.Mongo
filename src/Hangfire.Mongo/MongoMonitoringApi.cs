@@ -59,7 +59,7 @@ namespace Hangfire.Mongo
                 result.Add(new QueueWithTopEnqueuedJobsDto
                 {
                     Name = tuple.Queue,
-                    Length = counters.EnqueuedCount ?? 0,
+                    Length = counters.EnqueuedCount,
                     Fetched = counters.FetchedCount,
                     FirstJobs = firstJobs
                 });
@@ -252,7 +252,7 @@ namespace Hangfire.Mongo
             var queueApi = GetQueueApi(queue);
             var counters = queueApi.GetEnqueuedAndFetchedCount(queue);
 
-            return counters.EnqueuedCount ?? 0;
+            return counters.EnqueuedCount;
         }
 
         public long FetchedCount(string queue)
@@ -260,7 +260,7 @@ namespace Hangfire.Mongo
             var queueApi = GetQueueApi(queue);
             var counters = queueApi.GetEnqueuedAndFetchedCount(queue);
 
-            return counters.FetchedCount ?? 0;
+            return counters.FetchedCount;
         }
 
         public long FailedCount()

@@ -245,6 +245,38 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
             });
         }
 
+        [Fact, CleanDatabase]
+        public void GetEnqueuedAndFetchedCount_ShouldReturnZeroes_WhenNoJobsExist()
+        {
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
+            {
+                var counters = mongoJobQueueMonitoringApi.GetEnqueuedAndFetchedCount(QueueName1);
+
+                Assert.NotNull(counters);
+                Assert.Equal(0, counters.EnqueuedCount);
+                Assert.Equal(0, counters.FetchedCount);
+            });
+        }
+
+        [Fact, CleanDatabase]
+        public void GetEnqueuedAndFetchedCount_ShouldReturnCorrectValues()
+        {
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
+            {
+                CreateJobDto(connection, QueueName1, true);
+                CreateJobDto(connection, QueueName1, false);
+                CreateJobDto(connection, QueueName1, false);
+                CreateJobDto(connection, QueueName1, true);
+                CreateJobDto(connection, QueueName1, false);
+
+                var counters = mongoJobQueueMonitoringApi.GetEnqueuedAndFetchedCount(QueueName1);
+                
+                Assert.NotNull(counters);
+                Assert.Equal(3, counters.EnqueuedCount);
+                Assert.Equal(2, counters.FetchedCount);
+            });
+        }
+
         private static JobDto CreateJobDto(HangfireDbContext connection, string queue, bool isFetched)
         {
             var serverTime = connection.GetServerTimeUtc();
