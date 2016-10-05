@@ -109,7 +109,7 @@ namespace Hangfire.Mongo
                     $"Multiple provider instances registered for queues: {string.Join(", ", queues)}. You should choose only one type of persistent queues per server instance.");
             }
 
-            var persistentQueue = providers[0].GetJobQueue(Database);
+            var persistentQueue = providers[0].GetJobQueue();
             return persistentQueue.Dequeue(queues, cancellationToken);
         }
 

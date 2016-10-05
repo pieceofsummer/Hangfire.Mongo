@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Linq;
 using System.Threading;
-using Hangfire.Mongo.Database;
 using Hangfire.Mongo.Dto;
 using Hangfire.Mongo.MongoUtils;
 using Hangfire.Mongo.PersistentJobQueue.Mongo;
@@ -9,94 +8,140 @@ using Hangfire.Mongo.Tests.Utils;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Xunit;
+using Hangfire.Mongo.Database;
+using System.Threading.Tasks;
+using System.Diagnostics;
+using Hangfire.Storage;
+using System.Runtime.ExceptionServices;
+using Hangfire.Server;
 
 namespace Hangfire.Mongo.Tests
 {
-#pragma warning disable 1591
     [Collection("Database")]
     public class MongoJobQueueFacts
     {
         private static readonly string[] DefaultQueues = { "default" };
 
         [Fact]
-        public void Ctor_ThrowsAnException_WhenConnectionIsNull()
+        public void Ctor_ThrowsAnException_WhenStorageIsNull()
         {
-            var exception = Assert.Throws<ArgumentNullException>(
+            Assert.Throws<ArgumentNullException>("storage",
                 () => new MongoJobQueue(null, new MongoStorageOptions()));
-
-            Assert.Equal("connection", exception.ParamName);
         }
 
         [Fact]
-        public void Ctor_ThrowsAnException_WhenOptionsValueIsNull()
+        public void Ctor_ThrowsAnException_WhenOptionsIsNull()
         {
-            UseConnection(connection =>
+            UseConnection(storage =>
             {
-                var exception = Assert.Throws<ArgumentNullException>(
-                   () => new MongoJobQueue(connection, null));
-
-                Assert.Equal("options", exception.ParamName);
+                Assert.Throws<ArgumentNullException>("options",
+                   () => new MongoJobQueue(storage, null));
             });
         }
 
         [Fact, CleanDatabase]
         public void Dequeue_ShouldThrowAnException_WhenQueuesCollectionIsNull()
         {
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
-                var queue = CreateJobQueue(connection);
-
-                var exception = Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("queues",
                     () => queue.Dequeue(null, CreateTimingOutCancellationToken()));
-
-                Assert.Equal("queues", exception.ParamName);
             });
         }
 
         [Fact, CleanDatabase]
         public void Dequeue_ShouldThrowAnException_WhenQueuesCollectionIsEmpty()
         {
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
-                var queue = CreateJobQueue(connection);
-
-                var exception = Assert.Throws<ArgumentException>(
+                Assert.Throws<ArgumentException>("queues",
                     () => queue.Dequeue(new string[0], CreateTimingOutCancellationToken()));
-
-                Assert.Equal("queues", exception.ParamName);
             });
         }
 
         [Fact]
         public void Dequeue_ThrowsOperationCanceled_WhenCancellationTokenIsSetAtTheBeginning()
         {
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
                 var cts = new CancellationTokenSource();
                 cts.Cancel();
-                var queue = CreateJobQueue(connection);
 
-                Assert.Throws<OperationCanceledException>(() => queue.Dequeue(DefaultQueues, cts.Token));
+                Assert.Throws<OperationCanceledException>(
+                    () => queue.Dequeue(DefaultQueues, cts.Token));
             });
         }
 
+        [Fact]
+        public void Dequeue_ThrowsObjectDisposed_IfDisposedAtTheBeginning()
+        {
+            UseConnection((connection, queue) =>
+            {
+                var cts = new CancellationTokenSource();
+                cts.Cancel();
+
+                queue.Dispose();
+
+                Assert.Throws<ObjectDisposedException>(
+                    () => queue.Dequeue(DefaultQueues, cts.Token));
+            });
+        }
+        
+        [Fact, CleanDatabase]
+        public void Dequeue_ThrowsObjectDisposed_OnAllWaitingThreads_WhenDisposed()
+        {
+            UseConnection((connection, queue) =>
+            {
+                var cts = new CancellationTokenSource(1000);
+
+                Action defaultQueueHandler = 
+                    () => Assert.Throws<ObjectDisposedException>(
+                        () => queue.Dequeue(DefaultQueues, cts.Token));
+                
+                using (new ParallelThread(defaultQueueHandler))
+                using (new ParallelThread(defaultQueueHandler))
+                using (new ParallelThread(defaultQueueHandler))
+                {
+                    Thread.Sleep(500); // give threads some time to enter 'waiting' state
+                    queue.Dispose();
+                }
+            });
+        }
+        
         [Fact, CleanDatabase]
         public void Dequeue_ShouldWaitIndefinitely_WhenThereAreNoJobs()
         {
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
                 var cts = new CancellationTokenSource(200);
-                var queue = CreateJobQueue(connection);
 
-                Assert.Throws<OperationCanceledException>(() => queue.Dequeue(DefaultQueues, cts.Token));
+                Assert.Throws<OperationCanceledException>(
+                    () => queue.Dequeue(DefaultQueues, cts.Token));
             });
         }
+        
+        [Fact, CleanDatabase]
+        public void Dequeue_ShouldContinueWaiting_WhenNotifiedButNoActualJobFetched()
+        {
+            UseConnection((connection, queue) =>
+            {
+                var cts = new CancellationTokenSource(1000);
 
+                using (new ParallelThread(
+                    () => Assert.Throws<OperationCanceledException>(
+                        () => queue.Dequeue(DefaultQueues, cts.Token))))
+                {
+                    Thread.Sleep(500); // give thread some time to enter 'waiting' state
+                    queue.NotifyQueueChanged();
+                }
+            });
+        }
+        
         [Fact, CleanDatabase]
         public void Dequeue_ShouldFetchAJob_FromTheSpecifiedQueue()
         {
             // Arrange
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
                 var jobQueue = new JobQueueDto
                 {
@@ -106,15 +151,13 @@ namespace Hangfire.Mongo.Tests
 
                 connection.JobQueue.InsertOne(jobQueue);
                 
-                var queue = CreateJobQueue(connection);
-
                 // Act
-                MongoFetchedJob payload = (MongoFetchedJob)queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
+                var fetchedJob = (MongoFetchedJob)queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
 
                 // Assert
-                Assert.Equal(jobQueue.Id, payload.Id);
-                Assert.Equal(jobQueue.JobId, payload.JobId);
-                Assert.Equal("default", payload.Queue);
+                Assert.Equal(jobQueue.Id, fetchedJob.Id);
+                Assert.Equal(jobQueue.JobId, fetchedJob.JobId);
+                Assert.Equal("default", fetchedJob.Queue);
             });
         }
 
@@ -122,7 +165,7 @@ namespace Hangfire.Mongo.Tests
         public void Dequeue_ShouldLeaveJobInTheQueue_ButSetItsFetchedAtValue()
         {
             // Arrange
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
                 var job = new JobDto
                 {
@@ -138,16 +181,14 @@ namespace Hangfire.Mongo.Tests
                     Queue = "default"
                 };
                 connection.JobQueue.InsertOne(jobQueue);
-
-                var queue = CreateJobQueue(connection);
-
+                
                 // Act
-                var payload = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
+                var fetchedJob = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
 
                 // Assert
-                Assert.NotNull(payload);
+                Assert.NotNull(fetchedJob);
 
-                var fetchedAt = connection.JobQueue.Find(Builders<JobQueueDto>.Filter.Eq(_ => _.JobId, payload.JobId)).FirstOrDefault().FetchedAt;
+                var fetchedAt = connection.JobQueue.AsQueryable().Single(_ => _.JobId == fetchedJob.JobId).FetchedAt;
 
                 Assert.NotNull(fetchedAt);
                 Assert.True(fetchedAt > DateTime.UtcNow.AddMinutes(-1));
@@ -158,7 +199,7 @@ namespace Hangfire.Mongo.Tests
         public void Dequeue_ShouldFetchATimedOutJobs_FromTheSpecifiedQueue()
         {
             // Arrange
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
                 var job = new JobDto
                 {
@@ -175,14 +216,12 @@ namespace Hangfire.Mongo.Tests
                     FetchedAt = connection.GetServerTimeUtc().AddDays(-1)
                 };
                 connection.JobQueue.InsertOne(jobQueue);
-
-                var queue = CreateJobQueue(connection);
-
+                
                 // Act
-                var payload = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
+                var fetchedJob = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
 
                 // Assert
-                Assert.NotEmpty(payload.JobId);
+                Assert.Equal(job.Id, fetchedJob.JobId);
             });
         }
 
@@ -190,7 +229,7 @@ namespace Hangfire.Mongo.Tests
         public void Dequeue_ShouldSetFetchedAt_OnlyForTheFetchedJob()
         {
             // Arrange
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
                 var job1 = new JobDto
                 {
@@ -219,23 +258,21 @@ namespace Hangfire.Mongo.Tests
                     JobId = job2.Id,
                     Queue = "default"
                 });
-
-                var queue = CreateJobQueue(connection);
-
+                
                 // Act
-                var payload = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
+                var fetchedJob = queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken());
 
                 // Assert
-                var otherJobFetchedAt = connection.JobQueue.Find(Builders<JobQueueDto>.Filter.Ne(_ => _.JobId, payload.JobId)).FirstOrDefault().FetchedAt;
-
-                Assert.Null(otherJobFetchedAt);
+                var unfetchedJob = connection.JobQueue.AsQueryable().Single(_ => _.JobId != fetchedJob.JobId);
+                
+                Assert.Null(unfetchedJob.FetchedAt);
             });
         }
 
         [Fact, CleanDatabase]
         public void Dequeue_ShouldFetchJobs_OnlyFromSpecifiedQueues()
         {
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
                 var job1 = new JobDto
                 {
@@ -250,18 +287,16 @@ namespace Hangfire.Mongo.Tests
                     JobId = job1.Id,
                     Queue = "critical"
                 });
-
-
-                var queue = CreateJobQueue(connection);
-
-                Assert.Throws<OperationCanceledException>(() => queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken()));
+                
+                Assert.Throws<OperationCanceledException>(
+                    () => queue.Dequeue(DefaultQueues, CreateTimingOutCancellationToken()));
             });
         }
 
         [Fact, CleanDatabase]
         public void Dequeue_ShouldFetchJobs_FromMultipleQueuesBasedOnQueuePriority()
         {
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
                 var criticalJob = new JobDto
                 {
@@ -290,39 +325,76 @@ namespace Hangfire.Mongo.Tests
                     JobId = criticalJob.Id,
                     Queue = "critical"
                 });
-
-                var queue = CreateJobQueue(connection);
-
-                var critical = (MongoFetchedJob)queue.Dequeue(
-                    new[] { "critical", "default" },
-                    CreateTimingOutCancellationToken());
-
-                Assert.NotNull(critical.JobId);
+                
+                var critical = (MongoFetchedJob)queue.Dequeue(new[] { "critical", "default" }, CreateTimingOutCancellationToken());
+                Assert.Equal(criticalJob.Id, critical.JobId);
                 Assert.Equal("critical", critical.Queue);
 
-                var @default = (MongoFetchedJob)queue.Dequeue(
-                    new[] { "critical", "default" },
-                    CreateTimingOutCancellationToken());
-
-                Assert.NotNull(@default.JobId);
+                var @default = (MongoFetchedJob)queue.Dequeue(new[] { "critical", "default" }, CreateTimingOutCancellationToken());
+                Assert.Equal(defaultJob.Id, @default.JobId);
                 Assert.Equal("default", @default.Queue);
+            });
+        }
+
+        [Fact, CleanDatabase]
+        public void Dequeue_ShouldFetchJobs_OnAllWaitingThreads_WhenNotified()
+        {
+            UseConnection((connection, queue) =>
+            {
+                var defaultJobId = ObjectId.GenerateNewId().ToString();
+                var customJobId = ObjectId.GenerateNewId().ToString();
+
+                var cts = new CancellationTokenSource(1000);
+                IFetchedJob defaultJob = null, customJob = null;
+
+                // Ensures the job is dequeued from default queue just once, 
+                // while all the following attempts will eventually timeout
+                Action defaultQueueHandler =
+                    () => Assert.Throws<OperationCanceledException>(
+                        (Action)delegate
+                        {
+                            var job = queue.Dequeue(DefaultQueues, cts.Token);
+                            if (job == null)
+                                throw new InvalidOperationException("dequeued a null job");
+
+                            if (Interlocked.CompareExchange(ref defaultJob, job, null) != null)
+                                throw new InvalidOperationException("defaultJob was already assigned");
+
+                            throw new OperationCanceledException("fake OperationCanceledException to pass test");
+                        });
+
+
+                using (new ParallelThread(() => customJob = queue.Dequeue(new[] { "custom" }, cts.Token)))
+                using (new ParallelThread(defaultQueueHandler))
+                using (new ParallelThread(defaultQueueHandler))
+                using (new ParallelThread(defaultQueueHandler))
+                {
+                    Thread.Sleep(500); // give threads some time to enter 'waiting' state
+                    queue.Enqueue("default", defaultJobId);
+                    queue.Enqueue("custom", customJobId);
+                    queue.NotifyQueueChanged();
+                }
+
+                Assert.NotNull(defaultJob);
+                Assert.Equal(defaultJobId, defaultJob.JobId);
+
+                Assert.NotNull(customJob);
+                Assert.Equal(customJobId, customJob.JobId);
             });
         }
 
         [Fact, CleanDatabase]
         public void Enqueue_AddsAJobToTheQueue()
         {
-            UseConnection(connection =>
+            UseConnection((connection, queue) =>
             {
-                var queue = CreateJobQueue(connection);
-
                 var jobId = ObjectId.GenerateNewId().ToString();
                 queue.Enqueue("default", jobId);
 
-                var record = connection.JobQueue.Find(new BsonDocument()).ToList().Single();
-                Assert.Equal(jobId, record.JobId);
-                Assert.Equal("default", record.Queue);
-                Assert.Null(record.FetchedAt);
+                var fetchedJob = connection.JobQueue.AsQueryable().Single();
+                Assert.Equal(jobId, fetchedJob.JobId);
+                Assert.Equal("default", fetchedJob.Queue);
+                Assert.Null(fetchedJob.FetchedAt);
             });
         }
 
@@ -332,18 +404,21 @@ namespace Hangfire.Mongo.Tests
             return source.Token;
         }
 
-        private static MongoJobQueue CreateJobQueue(HangfireDbContext connection)
+        private static void UseConnection(Action<MongoStorage> action)
         {
-            return new MongoJobQueue(connection, new MongoStorageOptions());
+            using (var storage = ConnectionUtils.CreateStorage())
+            {
+                action(storage);
+            }
         }
 
-        private static void UseConnection(Action<HangfireDbContext> action)
+        private static void UseConnection(Action<HangfireDbContext, MongoJobQueue> action)
         {
-            using (var connection = ConnectionUtils.CreateConnection())
+            using (var storage = ConnectionUtils.CreateStorage())
+            using (var queue = new MongoJobQueue(storage, new MongoStorageOptions()))
             {
-                action(connection);
+                action(storage.Connection, queue);
             }
         }
     }
-#pragma warning restore 1591
 }

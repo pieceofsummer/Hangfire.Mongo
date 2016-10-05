@@ -8,14 +8,17 @@ using Hangfire.Mongo.MongoUtils;
 using Hangfire.Mongo.PersistentJobQueue;
 using Hangfire.States;
 using Hangfire.Storage;
-using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace Hangfire.Mongo
 {
     internal sealed class MongoWriteOnlyTransaction : JobStorageTransaction
     {
-        private readonly Queue<Action<HangfireDbContext>> _commandQueue = new Queue<Action<HangfireDbContext>>();
+        private readonly Queue<Action<HangfireDbContext>> _commandQueue 
+            = new Queue<Action<HangfireDbContext>>();
+
+        private readonly HashSet<IPersistentJobQueue> _changedQueues
+            = new HashSet<IPersistentJobQueue>();
 
         private readonly HangfireDbContext _connection;
 
@@ -145,12 +148,14 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(jobId)) throw new ArgumentNullException(nameof(jobId));
 
             IPersistentJobQueueProvider provider = _queueProviders.GetProvider(queue);
-            IPersistentJobQueue persistentQueue = provider.GetJobQueue(_connection);
+            IPersistentJobQueue persistentQueue = provider.GetJobQueue();
 
             QueueCommand(_ =>
             {
                 persistentQueue.Enqueue(queue, jobId);
             });
+
+            _changedQueues.Add(persistentQueue);
         }
 
         public override void IncrementCounter(string key)
@@ -250,7 +255,7 @@ namespace Hangfire.Mongo
 
             QueueCommand(x =>
             {
-                var itemIds = x.List.AsQueryable()
+                var ids = x.List.AsQueryable()
                     .Where(_ => _.Key == key)
                     .OrderByDescending(_ => _.Id)
                     .Select(_ => _.Id)
@@ -259,7 +264,7 @@ namespace Hangfire.Mongo
                 
                 x.List.DeleteMany(
                     Builders<ListDto>.Filter.Eq(_ => _.Key, key) &
-                    Builders<ListDto>.Filter.In(_ => _.Id, itemIds));
+                    Builders<ListDto>.Filter.In(_ => _.Id, ids));
             });
         }
 
@@ -290,6 +295,11 @@ namespace Hangfire.Mongo
 	        {
 		        action.Invoke(_connection);
 	        }
+
+            foreach (var queue in _changedQueues)
+            {
+                queue.NotifyQueueChanged();
+            }
         }
 
         private void QueueCommand(Action<HangfireDbContext> action)

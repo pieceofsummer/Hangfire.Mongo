@@ -61,7 +61,8 @@ namespace Hangfire.Mongo
         /// </summary>
         public void RemoveFromQueue()
         {
-            _connection.JobQueue.DeleteOne(Builders<JobQueueDto>.Filter.Eq(_ => _.Id, Id));
+            _connection.JobQueue.DeleteOne(
+                Builders<JobQueueDto>.Filter.Eq(_ => _.Id, Id));
 
             _removedFromQueue = true;
         }

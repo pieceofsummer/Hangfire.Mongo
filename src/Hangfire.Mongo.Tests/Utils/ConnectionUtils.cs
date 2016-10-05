@@ -3,7 +3,6 @@ using Hangfire.Mongo.Database;
 
 namespace Hangfire.Mongo.Tests.Utils
 {
-#pragma warning disable 1591
     public static class ConnectionUtils
     {
         private const string DatabaseVariable = "Hangfire_Mongo_DatabaseName";
@@ -32,6 +31,11 @@ namespace Hangfire.Mongo.Tests.Utils
             var connection = new HangfireDbContext(GetConnectionString(), GetDatabaseName());
             return connection;
         }
+
+        public static MongoStorage CreateStorage()
+        {
+            var storage = new MongoStorage(GetConnectionString(), GetDatabaseName());
+            return storage;
+        }
     }
-#pragma warning restore 1591
 }

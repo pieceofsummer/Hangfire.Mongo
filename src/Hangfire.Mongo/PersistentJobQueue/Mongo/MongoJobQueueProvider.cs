@@ -1,30 +1,31 @@
 ﻿using System;
-using Hangfire.Mongo.Database;
+using Hangfire.Annotations;
 
 namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 {
-#pragma warning disable 1591
-    internal class MongoJobQueueProvider : IPersistentJobQueueProvider
+    internal class MongoJobQueueProvider : IPersistentJobQueueProvider, IDisposable
     {
-        private readonly MongoStorageOptions _options;
+        private readonly MongoJobQueue _queue;
+        private readonly MongoJobQueueMonitoringApi _monitoringApi;
 
-        public MongoJobQueueProvider(MongoStorageOptions options)
+        public MongoJobQueueProvider([NotNull] MongoStorage storage, [NotNull] MongoStorageOptions options)
         {
+            if (storage == null)
+                throw new ArgumentNullException(nameof(storage));
             if (options == null)
                 throw new ArgumentNullException(nameof(options));
 
-            _options = options;
+            _queue = new MongoJobQueue(storage, options);
+            _monitoringApi = new MongoJobQueueMonitoringApi(storage);
         }
 
-        public IPersistentJobQueue GetJobQueue(HangfireDbContext connection)
-        {
-            return new MongoJobQueue(connection, _options);
-        }
+        public IPersistentJobQueue GetJobQueue() => _queue;
 
-        public IPersistentJobQueueMonitoringApi GetJobQueueMonitoringApi(HangfireDbContext connection)
+        public IPersistentJobQueueMonitoringApi GetJobQueueMonitoringApi() => _monitoringApi;
+
+        public void Dispose()
         {
-            return new MongoJobQueueMonitoringApi(connection);
+            _queue.Dispose();
         }
     }
-#pragma warning restore 1591
 }

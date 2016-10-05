@@ -1,61 +1,53 @@
 ﻿using System;
-using System.Linq;
 using Hangfire.Mongo.Tests.Utils;
 using Hangfire.Storage;
 using Xunit;
 
 namespace Hangfire.Mongo.Tests
 {
-#pragma warning disable 1591
     [Collection("Database")]
     public class MongoStorageFacts
     {
         [Fact]
         public void Ctor_ThrowsAnException_WhenConnectionStringIsEmpty()
         {
-            var exception = Assert.Throws<ArgumentNullException>(() => new MongoStorage("", "database"));
-
-            Assert.Equal("connectionString", exception.ParamName);
+            Assert.Throws<ArgumentNullException>("connectionString",
+                () => new MongoStorage("", "database"));
         }
 
         [Fact]
         public void Ctor_ThrowsAnException_WhenDatabaseNameIsNull()
         {
-            var exception = Assert.Throws<ArgumentNullException>(() => new MongoStorage("localhost", null));
-
-            Assert.Equal("databaseName", exception.ParamName);
+            Assert.Throws<ArgumentNullException>("databaseName",
+                () => new MongoStorage("localhost", null));
         }
 
         [Fact]
-        public void Ctor_ThrowsAnException_WhenOptionsValueIsNull()
+        public void Ctor_ThrowsAnException_WhenOptionsIsNull()
         {
-            var exception = Assert.Throws<ArgumentNullException>(() => new MongoStorage("localhost", "database", null));
-
-            Assert.Equal("options", exception.ParamName);
+            Assert.Throws<ArgumentNullException>("options",
+                () => new MongoStorage("localhost", "database", null));
         }
 
         [Fact, CleanDatabase]
         public void GetMonitoringApi_ReturnsNonNullInstance()
         {
-            MongoStorage storage = CreateStorage();
-            IMonitoringApi api = storage.GetMonitoringApi();
-            Assert.NotNull(api);
+            using (MongoStorage storage = ConnectionUtils.CreateStorage())
+            {
+                IMonitoringApi api = storage.GetMonitoringApi();
+                Assert.NotNull(api);
+            }
         }
 
         [Fact, CleanDatabase]
         public void GetConnection_ReturnsNonNullInstance()
         {
-            MongoStorage storage = CreateStorage();
+            using (MongoStorage storage = ConnectionUtils.CreateStorage())
             using (IStorageConnection connection = storage.GetConnection())
             {
                 Assert.NotNull(connection);
             }
         }
         
-        private static MongoStorage CreateStorage()
-        {
-            return new MongoStorage(ConnectionUtils.GetConnectionString(), ConnectionUtils.GetDatabaseName());
-        }
     }
-#pragma warning restore 1591
 }

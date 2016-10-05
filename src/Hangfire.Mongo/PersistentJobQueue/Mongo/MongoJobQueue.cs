@@ -1,8 +1,6 @@
 using System;
-using System.Globalization;
 using System.Threading;
 using Hangfire.Annotations;
-using Hangfire.Mongo.Database;
 using Hangfire.Mongo.Dto;
 using Hangfire.Mongo.MongoUtils;
 using Hangfire.Storage;
@@ -10,89 +8,97 @@ using MongoDB.Driver;
 
 namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 {
-#pragma warning disable 1591
-    public class MongoJobQueue : IPersistentJobQueue
+    internal class MongoJobQueue : IPersistentJobQueue, IDisposable
     {
+        private readonly ManualResetEvent _eventWaitHandle = new ManualResetEvent(false);
+
+        private readonly MongoStorage _storage;
         private readonly MongoStorageOptions _options;
-
-        private readonly HangfireDbContext _connection;
-
-        public MongoJobQueue(HangfireDbContext connection, MongoStorageOptions options)
+        private bool _disposed = false;
+        
+        public MongoJobQueue(MongoStorage storage, MongoStorageOptions options)
         {
+            if (storage == null)
+                throw new ArgumentNullException(nameof(storage));
             if (options == null)
                 throw new ArgumentNullException(nameof(options));
 
-            if (connection == null)
-                throw new ArgumentNullException(nameof(connection));
-
+            _storage = storage;
             _options = options;
-            _connection = connection;
         }
 
         [NotNull]
         public IFetchedJob Dequeue(string[] queues, CancellationToken cancellationToken)
         {
-            if (queues == null)
-                throw new ArgumentNullException(nameof(queues));
+            if (queues == null) throw new ArgumentNullException(nameof(queues));
+            if (queues.Length == 0) throw new ArgumentException("Queue array must be non-empty.", nameof(queues));
+            
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(MongoJobQueue));
 
-            if (queues.Length == 0)
-                throw new ArgumentException("Queue array must be non-empty.", nameof(queues));
-
-            JobQueueDto fetchedJob = null;
-
-            var fetchConditions = new[]
+            var triggers = new[]
             {
-                Builders<JobQueueDto>.Filter.Eq(_ => _.FetchedAt, null),
-                Builders<JobQueueDto>.Filter.Lt(_ => _.FetchedAt, _connection.GetServerTimeUtc().AddSeconds(_options.InvisibilityTimeout.Negate().TotalSeconds))
+                cancellationToken.WaitHandle,   // task cancelation (receiver: current thread)
+                _eventWaitHandle                // job added (receiver: all waiting threads)
             };
-            var currentQueryIndex = 0;
 
-            do
+            while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                FilterDefinition<JobQueueDto> fetchCondition = fetchConditions[currentQueryIndex];
+                var fetchedJob = _storage.Connection.JobQueue.FindOneAndUpdate(
+                    Builders<JobQueueDto>.Filter.In(_ => _.Queue, queues) &
+                    (Builders<JobQueueDto>.Filter.Eq(_ => _.FetchedAt, null) |
+                     Builders<JobQueueDto>.Filter.Lt(_ => _.FetchedAt, _storage.Connection.GetServerTimeUtc() - _options.InvisibilityTimeout)),
+                    Builders<JobQueueDto>.Update.CurrentDate(_ => _.FetchedAt),
+                    new FindOneAndUpdateOptions<JobQueueDto> { ReturnDocument = ReturnDocument.After }, 
+                    cancellationToken);
 
-                foreach (var queue in queues)
+                if (fetchedJob != null)
                 {
-                    fetchedJob = _connection.JobQueue.FindOneAndUpdate(
-                            fetchCondition & Builders<JobQueueDto>.Filter.Eq(_ => _.Queue, queue),
-                            Builders<JobQueueDto>.Update.Set(_ => _.FetchedAt, _connection.GetServerTimeUtc()),
-                            new FindOneAndUpdateOptions<JobQueueDto>
-                            {
-                                IsUpsert = false,
-                                ReturnDocument = ReturnDocument.After
-                            }, cancellationToken);
-                    if (fetchedJob != null)
-                    {
-                        break;
-                    }
+                    return new MongoFetchedJob(_storage.Connection, fetchedJob.Id, fetchedJob.JobId, fetchedJob.Queue);
                 }
 
-                if (fetchedJob == null)
-                {
-                    if (currentQueryIndex == fetchConditions.Length - 1)
-                    {
-                        cancellationToken.WaitHandle.WaitOne(_options.QueuePollInterval);
-                        cancellationToken.ThrowIfCancellationRequested();
-                    }
-                }
+                var triggerId = WaitHandle.WaitAny(triggers, _options.QueuePollInterval);
 
-                currentQueryIndex = (currentQueryIndex + 1) % fetchConditions.Length;
+                if (triggerId == 1 && _disposed)
+                {
+                    throw new ObjectDisposedException(nameof(MongoJobQueue));
+                }
             }
-            while (fetchedJob == null);
 
-            return new MongoFetchedJob(_connection, fetchedJob.Id, fetchedJob.JobId, fetchedJob.Queue);
         }
 
         public void Enqueue(string queue, string jobId)
         {
-            _connection.JobQueue.InsertOne(new JobQueueDto
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(MongoJobQueue));
+
+            _storage.Connection.JobQueue.InsertOne(new JobQueueDto
             {
                 JobId = jobId,
                 Queue = queue
             });
         }
+
+        public void NotifyQueueChanged()
+        {
+            if (_disposed) return;
+
+            // wake up all sleeping dequeuers, so they immediately start processing new jobs
+            _eventWaitHandle.Set();
+            _eventWaitHandle.Reset();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            
+            _disposed = true;
+
+            // wake up all sleeping dequeuers, so they immediately exit with ObjectDisposedException
+            _eventWaitHandle.Set();
+            _eventWaitHandle.Dispose();
+        }
     }
-#pragma warning disable 1591
 }

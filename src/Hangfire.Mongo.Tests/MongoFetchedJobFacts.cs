@@ -10,7 +10,6 @@ using Xunit;
 
 namespace Hangfire.Mongo.Tests
 {
-#pragma warning disable 1591
     [Collection("Database")]
     public class MongoFetchedJobFacts
     {
@@ -24,10 +23,8 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(connection =>
             {
-                var exception = Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("connection",
                     () => new MongoFetchedJob(null, Id, JobId, Queue));
-
-                Assert.Equal("connection", exception.ParamName);
             });
         }
 
@@ -36,10 +33,8 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(connection =>
             {
-                var exception = Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("id",
                     () => new MongoFetchedJob(connection, null, JobId, Queue));
-
-                Assert.Equal("id", exception.ParamName);
             });
         }
         
@@ -48,10 +43,8 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(connection =>
             {
-                var exception = Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("jobId",
                     () => new MongoFetchedJob(connection, Id, null, Queue));
-
-                Assert.Equal("jobId", exception.ParamName);
             });
         }
 
@@ -60,10 +53,8 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(connection =>
             {
-                var exception = Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("queue",
                     () => new MongoFetchedJob(connection, Id, JobId, null));
-
-                Assert.Equal("queue", exception.ParamName);
             });
         }
 
@@ -93,7 +84,7 @@ namespace Hangfire.Mongo.Tests
                 processingJob.RemoveFromQueue();
 
                 // Assert
-                var count = connection.JobQueue.Count(new BsonDocument());
+                var count = connection.JobQueue.AsQueryable().Count();
                 Assert.Equal(0, count);
             });
         }
@@ -105,16 +96,16 @@ namespace Hangfire.Mongo.Tests
             {
                 // Arrange
                 CreateJobQueueRecord(connection, JobId, "default");
-                CreateJobQueueRecord(connection, NewId(), "critical");
-                CreateJobQueueRecord(connection, NewId(), "default");
+                CreateJobQueueRecord(connection, null, "critical");
+                CreateJobQueueRecord(connection, null, "default");
 
-                var fetchedJob = new MongoFetchedJob(connection, NewId(), JobId, "default");
+                var fetchedJob = new MongoFetchedJob(connection, Id, JobId, "default");
 
                 // Act
                 fetchedJob.RemoveFromQueue();
 
                 // Assert
-                var count = connection.JobQueue.Count(new BsonDocument());
+                var count = connection.JobQueue.AsQueryable().Count();
                 Assert.Equal(3, count);
             });
         }
@@ -132,7 +123,7 @@ namespace Hangfire.Mongo.Tests
                 processingJob.Requeue();
 
                 // Assert
-                var record = connection.JobQueue.Find(new BsonDocument()).ToList().Single();
+                var record = connection.JobQueue.AsQueryable().Single();
                 Assert.Null(record.FetchedAt);
             });
         }
@@ -150,23 +141,21 @@ namespace Hangfire.Mongo.Tests
                 processingJob.Dispose();
 
                 // Assert
-                var record = connection.JobQueue.Find(new BsonDocument()).ToList().Single();
+                var record = connection.JobQueue.AsQueryable().Single();
                 Assert.Null(record.FetchedAt);
             });
         }
-
-        private static string NewId()
-        {
-            return ObjectId.GenerateNewId().ToString();
-        }
-
+        
         private static string CreateJobQueueRecord(HangfireDbContext connection, string jobId, string queue)
         {
+            if (jobId == null)
+                jobId = ObjectId.GenerateNewId().ToString();
+
             var jobQueue = new JobQueueDto
             {
                 JobId = jobId,
                 Queue = queue,
-                FetchedAt = connection.GetServerTimeUtc()
+                FetchedAt = DateTime.UtcNow
             };
 
             connection.JobQueue.InsertOne(jobQueue);
@@ -182,5 +171,4 @@ namespace Hangfire.Mongo.Tests
             }
         }
     }
-#pragma warning restore 1591
 }

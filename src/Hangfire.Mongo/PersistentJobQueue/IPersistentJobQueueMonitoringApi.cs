@@ -2,8 +2,7 @@
 
 namespace Hangfire.Mongo.PersistentJobQueue
 {
-#pragma warning disable 1591
-    public interface IPersistentJobQueueMonitoringApi
+    internal interface IPersistentJobQueueMonitoringApi
     {
         IEnumerable<string> GetQueues();
 
@@ -13,5 +12,4 @@ namespace Hangfire.Mongo.PersistentJobQueue
 
         EnqueuedAndFetchedCountDto GetEnqueuedAndFetchedCount(string queue);
     }
-#pragma warning restore 1591
 }

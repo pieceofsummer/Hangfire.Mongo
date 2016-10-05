@@ -1,76 +1,65 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Hangfire.Mongo.Database;
-using Hangfire.Mongo.Dto;
-using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 {
     internal class MongoJobQueueMonitoringApi : IPersistentJobQueueMonitoringApi
     {
-        private readonly HangfireDbContext _connection;
+        private readonly MongoStorage _storage;
 
-        public MongoJobQueueMonitoringApi(HangfireDbContext connection)
+        private static readonly EnqueuedAndFetchedCountDto EmptyCounters
+            = new EnqueuedAndFetchedCountDto();
+
+        public MongoJobQueueMonitoringApi(MongoStorage storage)
         {
-            if (connection == null)
-                throw new ArgumentNullException(nameof(connection));
+            if (storage == null)
+                throw new ArgumentNullException(nameof(storage));
 
-            _connection = connection;
+            _storage = storage;
         }
 
         public IEnumerable<string> GetQueues()
         {
-            return _connection.JobQueue
-                .Find(new BsonDocument())
-                .Project(_ => _.Queue)
-                .ToList().Distinct().ToList();
+            return _storage.Connection.JobQueue.AsQueryable()
+                .GroupBy(_ => _.Queue)
+                .Select(g => g.Key)
+                .ToList();
         }
 
         public IEnumerable<string> GetEnqueuedJobIds(string queue, int from, int perPage)
         {
-            return _connection.JobQueue
-                .Find(Builders<JobQueueDto>.Filter.Eq(_ => _.Queue, queue) & Builders<JobQueueDto>.Filter.Eq(_ => _.FetchedAt, null))
+            return _storage.Connection.JobQueue.AsQueryable()
+                .Where(_ => _.Queue == queue && _.FetchedAt == null)
+                .OrderBy(_ => _.Id)
+                .Select(_ => _.JobId)
                 .Skip(from)
-                .Limit(perPage)
-                .Project(_ => _.JobId)
-                .ToList()
-                .Where(jobQueueJobId =>
-                {
-                    var job = _connection.Job.Find(Builders<JobDto>.Filter.Eq(_ => _.Id, jobQueueJobId)).FirstOrDefault();
-                    return (job != null) && (_connection.State.Find(Builders<StateDto>.Filter.Eq(_ => _.Id, job.StateId)).FirstOrDefault() != null);
-                }).ToArray();
+                .Take(perPage)
+                .ToList();
         }
 
         public IEnumerable<string> GetFetchedJobIds(string queue, int from, int perPage)
         {
-            return _connection.JobQueue
-                .Find(Builders<JobQueueDto>.Filter.Eq(_ => _.Queue, queue) & Builders<JobQueueDto>.Filter.Ne(_ => _.FetchedAt, null))
+            // TODO: Hangfire.SqlServer has deprecated dividing queue into enqueued/fetched jobs, probably we should too
+
+            return _storage.Connection.JobQueue.AsQueryable()
+                .Where(_ => _.Queue == queue && _.FetchedAt != null)
+                .OrderBy(_ => _.Id)
+                .Select(_ => _.JobId)
                 .Skip(from)
-                .Limit(perPage)
-                .Project(_ => _.JobId)
-                .ToList()
-                .Where(jobQueueJobId =>
-                {
-                    var job = _connection.Job.Find(Builders<JobDto>.Filter.Eq(_ => _.Id, jobQueueJobId)).FirstOrDefault();
-                    return job != null;
-                }).ToArray();
+                .Take(perPage)
+                .ToList();
         }
 
         public EnqueuedAndFetchedCountDto GetEnqueuedAndFetchedCount(string queue)
         {
-            int enqueuedCount = (int)_connection.JobQueue.Count(Builders<JobQueueDto>.Filter.Eq(_ => _.Queue, queue) &
-                                                Builders<JobQueueDto>.Filter.Eq(_ => _.FetchedAt, null));
-
-            int fetchedCount = (int)_connection.JobQueue.Count(Builders<JobQueueDto>.Filter.Eq(_ => _.Queue, queue) &
-                                                Builders<JobQueueDto>.Filter.Ne(_ => _.FetchedAt, null));
-
-            return new EnqueuedAndFetchedCountDto
-            {
-                EnqueuedCount = enqueuedCount,
-                FetchedCount = fetchedCount
-            };
+            return _storage.Connection.JobQueue.AsQueryable()
+                .Where(_ => _.Queue == queue)
+                .GroupBy(_ => 1)
+                .Select(g => new { Enqueued = g.Count(_ => _.FetchedAt == null), Total = g.Count() })
+                .Select(_ => new EnqueuedAndFetchedCountDto { EnqueuedCount = _.Enqueued, FetchedCount = _.Total - _.Enqueued })
+                .FirstOrDefault() ?? EmptyCounters;
         }
 
     }

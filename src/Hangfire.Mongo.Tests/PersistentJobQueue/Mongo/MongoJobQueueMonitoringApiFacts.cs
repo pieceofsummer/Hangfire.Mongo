@@ -9,7 +9,6 @@ using Xunit;
 
 namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
 {
-#pragma warning disable 1591
     [Collection("Database")]
     public class MongoJobQueueMonitoringApiFacts
     {
@@ -21,16 +20,14 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         {
             var exception = Assert.Throws<ArgumentNullException>(() => new MongoJobQueueMonitoringApi(null));
 
-            Assert.Equal("connection", exception.ParamName);
+            Assert.Equal("storage", exception.ParamName);
         }
 
         [Fact, CleanDatabase]
         public void GetQueues_ShouldReturnEmpty_WhenNoQueuesExist()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var queues = mongoJobQueueMonitoringApi.GetQueues();
 
                 Assert.Empty(queues);
@@ -40,10 +37,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetQueues_ShouldReturnOneQueue_WhenOneQueueExists()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 CreateJobQueueDto(connection, QueueName1, false);
 
                 var queues = mongoJobQueueMonitoringApi.GetQueues().ToList();
@@ -56,10 +51,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetQueues_ShouldReturnTwoUniqueQueues_WhenThreeNonUniqueQueuesExist()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 CreateJobQueueDto(connection, QueueName1, false);
                 CreateJobQueueDto(connection, QueueName1, false);
                 CreateJobQueueDto(connection, QueueName2, false);
@@ -75,10 +68,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetEnqueuedJobIds_ShouldReturnEmpty_WheNoQueuesExist()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var enqueuedJobIds = mongoJobQueueMonitoringApi.GetEnqueuedJobIds(QueueName1, 0, 10);
 
                 Assert.Empty(enqueuedJobIds);
@@ -88,10 +79,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetEnqueuedJobIds_ShouldReturnEmpty_WhenOneJobWithAFetchedStateExists()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 CreateJobQueueDto(connection, QueueName1, true);
 
                 var enqueuedJobIds = mongoJobQueueMonitoringApi.GetEnqueuedJobIds(QueueName1, 0, 10).ToList();
@@ -103,10 +92,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetEnqueuedJobIds_ShouldReturnOneJobId_WhenOneJobExists()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var jobQueueDto = CreateJobQueueDto(connection, QueueName1, false);
 
                 var enqueuedJobIds = mongoJobQueueMonitoringApi.GetEnqueuedJobIds(QueueName1, 0, 10).ToList();
@@ -119,10 +106,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetEnqueuedJobIds_ShouldReturnThreeJobIds_WhenThreeJobsExists()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var jobQueueDto = CreateJobQueueDto(connection, QueueName1, false);
                 var jobQueueDto2 = CreateJobQueueDto(connection, QueueName1, false);
                 var jobQueueDto3 = CreateJobQueueDto(connection, QueueName1, false);
@@ -139,10 +124,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetEnqueuedJobIds_ShouldReturnTwoJobIds_WhenThreeJobsExistsButOnlyTwoInRequestedQueue()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var jobQueueDto = CreateJobQueueDto(connection, QueueName1, false);
                 var jobQueueDto2 = CreateJobQueueDto(connection, QueueName1, false);
                 CreateJobQueueDto(connection, QueueName2, false);
@@ -158,10 +141,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetEnqueuedJobIds_ShouldReturnTwoJobIds_WhenThreeJobsExistsButLimitIsSet()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var jobQueueDto = CreateJobQueueDto(connection, QueueName1, false);
                 var jobQueueDto2 = CreateJobQueueDto(connection, QueueName1, false);
                 CreateJobQueueDto(connection, QueueName1, false);
@@ -177,10 +158,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetFetchedJobIds_ShouldReturnEmpty_WheNoQueuesExist()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var enqueuedJobIds = mongoJobQueueMonitoringApi.GetFetchedJobIds(QueueName1, 0, 10);
 
                 Assert.Empty(enqueuedJobIds);
@@ -190,10 +169,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetFetchedJobIds_ShouldReturnEmpty_WhenOneJobWithNonFetchedStateExists()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 CreateJobQueueDto(connection, QueueName1, false);
 
                 var enqueuedJobIds = mongoJobQueueMonitoringApi.GetFetchedJobIds(QueueName1, 0, 10).ToList();
@@ -205,10 +182,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetFetchedJobIds_ShouldReturnOneJobId_WhenOneJobExists()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var jobQueueDto = CreateJobQueueDto(connection, QueueName1, true);
 
                 var enqueuedJobIds = mongoJobQueueMonitoringApi.GetFetchedJobIds(QueueName1, 0, 10).ToList();
@@ -221,10 +196,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetFetchedJobIds_ShouldReturnThreeJobIds_WhenThreeJobsExists()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var jobQueueDto = CreateJobQueueDto(connection, QueueName1, true);
                 var jobQueueDto2 = CreateJobQueueDto(connection, QueueName1, true);
                 var jobQueueDto3 = CreateJobQueueDto(connection, QueueName1, true);
@@ -241,10 +214,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetFetchedJobIds_ShouldReturnTwoJobIds_WhenThreeJobsExistsButOnlyTwoInRequestedQueue()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var jobQueueDto = CreateJobQueueDto(connection, QueueName1, true);
                 var jobQueueDto2 = CreateJobQueueDto(connection, QueueName1, true);
                 CreateJobQueueDto(connection, QueueName2, true);
@@ -260,10 +231,8 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
         [Fact, CleanDatabase]
         public void GetFetchedJobIds_ShouldReturnTwoJobIds_WhenThreeJobsExistsButLimitIsSet()
         {
-            UseConnection(connection =>
+            UseConnection((connection, mongoJobQueueMonitoringApi) =>
             {
-                var mongoJobQueueMonitoringApi = CreateMongoJobQueueMonitoringApi(connection);
-
                 var jobQueueDto = CreateJobQueueDto(connection, QueueName1, true);
                 var jobQueueDto2 = CreateJobQueueDto(connection, QueueName1, true);
                 CreateJobQueueDto(connection, QueueName1, true);
@@ -278,45 +247,40 @@ namespace Hangfire.Mongo.Tests.PersistentJobQueue.Mongo
 
         private static JobQueueDto CreateJobQueueDto(HangfireDbContext connection, string queue, bool isFetched)
         {
-            var state = new StateDto();
-            connection.State.InsertOne(state);
+            var serverTime = connection.GetServerTimeUtc();
 
+            var state = new StateDto()
+            {
+                CreatedAt = serverTime
+            };
+            connection.State.InsertOne(state);
+            
             var job = new JobDto
             {
-                CreatedAt = connection.GetServerTimeUtc(),
-                StateId = state.Id
+                CreatedAt = serverTime,
+                StateId = state.Id,
+                StateName = state.Name
             };
-
             connection.Job.InsertOne(job);
 
             var jobQueue = new JobQueueDto
             {
                 Queue = queue,
-                JobId = job.Id
+                JobId = job.Id,
+                FetchedAt = isFetched ? (DateTime?)serverTime.AddDays(-1) : null
             };
-
-            if (isFetched)
-            {
-                jobQueue.FetchedAt = connection.GetServerTimeUtc().AddDays(-1);
-            }
-
             connection.JobQueue.InsertOne(jobQueue);
 
             return jobQueue;
         }
-
-        private static MongoJobQueueMonitoringApi CreateMongoJobQueueMonitoringApi(HangfireDbContext connection)
+        
+        private static void UseConnection(Action<HangfireDbContext, MongoJobQueueMonitoringApi> action)
         {
-            return new MongoJobQueueMonitoringApi(connection);
-        }
-
-        private static void UseConnection(Action<HangfireDbContext> action)
-        {
-            using (var connection = ConnectionUtils.CreateConnection())
+            using (var storage = ConnectionUtils.CreateStorage())
             {
-                action(connection);
+                var monitoringApi = new MongoJobQueueMonitoringApi(storage);
+                action(storage.Connection, monitoringApi);
             }
         }
     }
-#pragma warning restore 1591
 }

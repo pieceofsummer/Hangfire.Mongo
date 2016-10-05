@@ -12,7 +12,8 @@
   
   "buildOptions": {
     "warningsAsErrors": true,
-    "nowarn": [ "CS0618" ]
+    "nowarn": [ "CS0618", "CS1591" ],
+    "debugType": "portable"
   },
 
   "frameworks": {

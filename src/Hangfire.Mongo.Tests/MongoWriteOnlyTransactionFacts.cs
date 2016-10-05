@@ -7,14 +7,12 @@ using Hangfire.Mongo.MongoUtils;
 using Hangfire.Mongo.PersistentJobQueue;
 using Hangfire.Mongo.Tests.Utils;
 using Hangfire.States;
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Moq;
 using Xunit;
 
 namespace Hangfire.Mongo.Tests
 {
-#pragma warning disable 1591
     [Collection("Database")]
     public class MongoWriteOnlyTransactionFacts
     {
@@ -23,7 +21,7 @@ namespace Hangfire.Mongo.Tests
         public MongoWriteOnlyTransactionFacts()
         {
             Mock<IPersistentJobQueueProvider> defaultProvider = new Mock<IPersistentJobQueueProvider>();
-            defaultProvider.Setup(x => x.GetJobQueue(It.IsNotNull<HangfireDbContext>()))
+            defaultProvider.Setup(x => x.GetJobQueue())
                 .Returns(new Mock<IPersistentJobQueue>().Object);
 
             _queueProviders = new PersistentJobQueueProviderCollection(defaultProvider.Object);
@@ -32,17 +30,15 @@ namespace Hangfire.Mongo.Tests
         [Fact]
         public void Ctor_ThrowsAnException_IfConnectionIsNull()
         {
-            ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() => new MongoWriteOnlyTransaction(null, _queueProviders));
-
-            Assert.Equal("connection", exception.ParamName);
+            Assert.Throws<ArgumentNullException>("connection",
+                () => new MongoWriteOnlyTransaction(null, _queueProviders));
         }
 
         [Fact, CleanDatabase]
         public void Ctor_ThrowsAnException_IfProvidersCollectionIsNull()
         {
-            var exception = Assert.Throws<ArgumentNullException>(() => new MongoWriteOnlyTransaction(ConnectionUtils.CreateConnection(), null));
-
-            Assert.Equal("queueProviders", exception.ParamName);
+            Assert.Throws<ArgumentNullException>("queueProviders",
+                () => new MongoWriteOnlyTransaction(ConnectionUtils.CreateConnection(), null));
         }
 
         [Fact, CleanDatabase]
@@ -54,7 +50,7 @@ namespace Hangfire.Mongo.Tests
                 {
                     InvocationData = "",
                     Arguments = "",
-                    CreatedAt = database.GetServerTimeUtc()
+                    CreatedAt = DateTime.UtcNow
                 };
                 database.Job.InsertOne(job);
 
@@ -62,7 +58,7 @@ namespace Hangfire.Mongo.Tests
                 {
                     InvocationData = "",
                     Arguments = "",
-                    CreatedAt = database.GetServerTimeUtc()
+                    CreatedAt = DateTime.UtcNow
                 };
                 database.Job.InsertOne(anotherJob);
 
@@ -72,7 +68,8 @@ namespace Hangfire.Mongo.Tests
                 Commit(database, x => x.ExpireJob(jobId, TimeSpan.FromDays(1)));
 
                 var testJob = GetTestJob(database, jobId);
-                Assert.True(database.GetServerTimeUtc().AddMinutes(-1) < testJob.ExpireAt && testJob.ExpireAt <= database.GetServerTimeUtc().AddDays(1));
+                Assert.True(testJob.ExpireAt > database.GetServerTimeUtc().AddDays(1).AddMinutes(-1));
+                Assert.True(testJob.ExpireAt < database.GetServerTimeUtc().AddDays(1).AddMinutes(1));
 
                 var anotherTestJob = GetTestJob(database, anotherJobId);
                 Assert.Null(anotherTestJob.ExpireAt);
@@ -124,7 +121,7 @@ namespace Hangfire.Mongo.Tests
                 {
                     InvocationData = "",
                     Arguments = "",
-                    CreatedAt = database.GetServerTimeUtc()
+                    CreatedAt = DateTime.UtcNow
                 };
                 database.Job.InsertOne(job);
 
@@ -132,7 +129,7 @@ namespace Hangfire.Mongo.Tests
                 {
                     InvocationData = "",
                     Arguments = "",
-                    CreatedAt = database.GetServerTimeUtc()
+                    CreatedAt = DateTime.UtcNow
                 };
                 database.Job.InsertOne(anotherJob);
 
@@ -155,7 +152,7 @@ namespace Hangfire.Mongo.Tests
                 Assert.Null(anotherTestJob.StateName);
                 Assert.Equal(null, anotherTestJob.StateId);
 
-                StateDto jobState = database.State.Find(new BsonDocument()).ToList().Single();
+                StateDto jobState = database.State.AsQueryable().Single();
                 Assert.Equal(jobId, jobState.JobId);
                 Assert.Equal("State", jobState.Name);
                 Assert.Equal("Reason", jobState.Reason);
@@ -173,7 +170,7 @@ namespace Hangfire.Mongo.Tests
                 {
                     InvocationData = "",
                     Arguments = "",
-                    CreatedAt = database.GetServerTimeUtc()
+                    CreatedAt = DateTime.UtcNow
                 };
                 database.Job.InsertOne(job);
 
@@ -191,7 +188,7 @@ namespace Hangfire.Mongo.Tests
                 Assert.Null(testJob.StateName);
                 Assert.Equal(null, testJob.StateId);
 
-                StateDto jobState = database.State.Find(new BsonDocument()).ToList().Single();
+                StateDto jobState = database.State.AsQueryable().Single();
                 Assert.Equal(jobId, jobState.JobId);
                 Assert.Equal("State", jobState.Name);
                 Assert.Equal("Reason", jobState.Reason);
@@ -207,25 +204,26 @@ namespace Hangfire.Mongo.Tests
             {
                 var correctJobQueue = new Mock<IPersistentJobQueue>();
                 var correctProvider = new Mock<IPersistentJobQueueProvider>();
-                correctProvider.Setup(x => x.GetJobQueue(It.IsNotNull<HangfireDbContext>()))
+                correctProvider.Setup(x => x.GetJobQueue())
                     .Returns(correctJobQueue.Object);
 
                 _queueProviders.Add(correctProvider.Object, new[] { "default" });
 
-                Commit(database, x => x.AddToQueue("default", "1"));
+                Commit(database, x => x.AddToQueue("default", "579e47b79d01c5191c376260"));
 
-                correctJobQueue.Verify(x => x.Enqueue("default", "1"));
+                correctJobQueue.Verify(x => x.Enqueue("default", "579e47b79d01c5191c376260"));
+                correctJobQueue.Verify(x => x.NotifyQueueChanged(), Times.Once);
             });
         }
 
         [Fact, CleanDatabase]
-        public void IncrementCounter_AddsRecordToCounterTable_WithPositiveValue()
+        public void IncrementCounter_NoExpiry_AddsRecord_WithPositiveValue()
         {
             UseConnection(database =>
             {
                 Commit(database, x => x.IncrementCounter("my-key"));
 
-                CounterDto record = database.Counter.Find(new BsonDocument()).ToList().Single();
+                CounterDto record = database.Counter.AsQueryable().Single();
 
                 Assert.Equal("my-key", record.Key);
                 Assert.Equal(1, record.Value);
@@ -234,13 +232,13 @@ namespace Hangfire.Mongo.Tests
         }
 
         [Fact, CleanDatabase]
-        public void IncrementCounter_WithExpiry_AddsARecord_WithExpirationTimeSet()
+        public void IncrementCounter_WithExpiry_AddsRecord_WithPositiveValueAndExpirationDate()
         {
             UseConnection(database =>
             {
                 Commit(database, x => x.IncrementCounter("my-key", TimeSpan.FromDays(1)));
 
-                CounterDto record = database.Counter.Find(new BsonDocument()).ToList().Single();
+                CounterDto record = database.Counter.AsQueryable().Single();
 
                 Assert.Equal("my-key", record.Key);
                 Assert.Equal(1, record.Value);
@@ -248,13 +246,13 @@ namespace Hangfire.Mongo.Tests
 
                 var expireAt = (DateTime)record.ExpireAt;
 
-                Assert.True(database.GetServerTimeUtc().AddHours(23) < expireAt);
+                Assert.True(expireAt > database.GetServerTimeUtc().AddHours(23));
                 Assert.True(expireAt < database.GetServerTimeUtc().AddHours(25));
             });
         }
 
         [Fact, CleanDatabase]
-        public void IncrementCounter_WithExistingKey_AddsAnotherRecord()
+        public void IncrementCounter_AddsNewRecord_ForEachOperation()
         {
             UseConnection(database =>
             {
@@ -264,20 +262,20 @@ namespace Hangfire.Mongo.Tests
                     x.IncrementCounter("my-key");
                 });
 
-                var recordCount = database.Counter.Count(new BsonDocument());
+                var recordCount = database.Counter.AsQueryable().Count();
 
                 Assert.Equal(2, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void DecrementCounter_AddsRecordToCounterTable_WithNegativeValue()
+        public void DecrementCounter_NoExpiry_AddsRecord_WithNegativeValue()
         {
             UseConnection(database =>
             {
                 Commit(database, x => x.DecrementCounter("my-key"));
 
-                CounterDto record = database.Counter.Find(new BsonDocument()).ToList().Single();
+                CounterDto record = database.Counter.AsQueryable().Single();
 
                 Assert.Equal("my-key", record.Key);
                 Assert.Equal(-1, record.Value);
@@ -286,13 +284,13 @@ namespace Hangfire.Mongo.Tests
         }
 
         [Fact, CleanDatabase]
-        public void DecrementCounter_WithExpiry_AddsARecord_WithExpirationTimeSet()
+        public void DecrementCounter_WithExpiry_AddsRecord_WithNegativeValueAndExpirationDate()
         {
             UseConnection(database =>
             {
                 Commit(database, x => x.DecrementCounter("my-key", TimeSpan.FromDays(1)));
 
-                CounterDto record = database.Counter.Find(new BsonDocument()).ToList().Single();
+                CounterDto record = database.Counter.AsQueryable().Single();
 
                 Assert.Equal("my-key", record.Key);
                 Assert.Equal(-1, record.Value);
@@ -300,13 +298,13 @@ namespace Hangfire.Mongo.Tests
 
                 var expireAt = (DateTime)record.ExpireAt;
 
-                Assert.True(database.GetServerTimeUtc().AddHours(23) < expireAt);
+                Assert.True(expireAt > database.GetServerTimeUtc().AddHours(23));
                 Assert.True(expireAt < database.GetServerTimeUtc().AddHours(25));
             });
         }
 
         [Fact, CleanDatabase]
-        public void DecrementCounter_WithExistingKey_AddsAnotherRecord()
+        public void DecrementCounter_AddsNewRecord_ForEachOperation()
         {
             UseConnection(database =>
             {
@@ -316,20 +314,20 @@ namespace Hangfire.Mongo.Tests
                     x.DecrementCounter("my-key");
                 });
 
-                var recordCount = database.Counter.Count(new BsonDocument());
+                var recordCount = database.Counter.AsQueryable().Count();
 
                 Assert.Equal(2, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void AddToSet_AddsARecord_IfThereIsNo_SuchKeyAndValue()
+        public void AddToSet_AddsNewRecord_ForNewKeyAndValue()
         {
             UseConnection(database =>
             {
                 Commit(database, x => x.AddToSet("my-key", "my-value"));
 
-                SetDto record = database.Set.Find(new BsonDocument()).ToList().Single();
+                SetDto record = database.Set.AsQueryable().Single();
 
                 Assert.Equal("my-key", record.Key);
                 Assert.Equal("my-value", record.Value);
@@ -338,7 +336,7 @@ namespace Hangfire.Mongo.Tests
         }
 
         [Fact, CleanDatabase]
-        public void AddToSet_AddsARecord_WhenKeyIsExists_ButValuesAreDifferent()
+        public void AddToSet_AddsNewRecord_ForExistingKeyAndNewValue()
         {
             UseConnection(database =>
             {
@@ -348,14 +346,14 @@ namespace Hangfire.Mongo.Tests
                     x.AddToSet("my-key", "another-value");
                 });
 
-                var recordCount = database.Set.Count(new BsonDocument());
+                var recordCount = database.Set.AsQueryable().Count();
 
                 Assert.Equal(2, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void AddToSet_DoesNotAddARecord_WhenBothKeyAndValueAreExist()
+        public void AddToSet_UpdatesRecord_ForExistingKeyAndValue()
         {
             UseConnection(database =>
             {
@@ -365,20 +363,20 @@ namespace Hangfire.Mongo.Tests
                     x.AddToSet("my-key", "my-value");
                 });
 
-                var recordCount = database.Set.Count(new BsonDocument());
+                var recordCount = database.Set.AsQueryable().Count();
 
                 Assert.Equal(1, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void AddToSet_WithScore_AddsARecordWithScore_WhenBothKeyAndValueAreNotExist()
+        public void AddToSet_WithScore_AddsNewRecord_WithNewKeyAndValue()
         {
             UseConnection(database =>
             {
                 Commit(database, x => x.AddToSet("my-key", "my-value", 3.2));
 
-                SetDto record = database.Set.Find(new BsonDocument()).ToList().Single();
+                SetDto record = database.Set.AsQueryable().Single();
 
                 Assert.Equal("my-key", record.Key);
                 Assert.Equal("my-value", record.Value);
@@ -387,7 +385,7 @@ namespace Hangfire.Mongo.Tests
         }
 
         [Fact, CleanDatabase]
-        public void AddToSet_WithScore_UpdatesAScore_WhenBothKeyAndValueAreExist()
+        public void AddToSet_WithScore_UpdatesRecord_ForExistingKeyAndValue()
         {
             UseConnection(database =>
             {
@@ -397,14 +395,14 @@ namespace Hangfire.Mongo.Tests
                     x.AddToSet("my-key", "my-value", 3.2);
                 });
 
-                SetDto record = database.Set.Find(new BsonDocument()).ToList().Single();
+                SetDto record = database.Set.AsQueryable().Single();
 
                 Assert.Equal(3.2, record.Score, 3);
             });
         }
 
         [Fact, CleanDatabase]
-        public void RemoveFromSet_RemovesARecord_WithGivenKeyAndValue()
+        public void RemoveFromSet_RemovesRecord_ForGivenKeyAndValue()
         {
             UseConnection(database =>
             {
@@ -414,14 +412,14 @@ namespace Hangfire.Mongo.Tests
                     x.RemoveFromSet("my-key", "my-value");
                 });
 
-                var recordCount = database.Set.Count(new BsonDocument());
+                var recordCount = database.Set.AsQueryable().Count();
 
                 Assert.Equal(0, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void RemoveFromSet_DoesNotRemoveRecord_WithSameKey_AndDifferentValue()
+        public void RemoveFromSet_DoesNotRemoveRecords_WithSameKeyAndDifferentValue()
         {
             UseConnection(database =>
             {
@@ -431,14 +429,14 @@ namespace Hangfire.Mongo.Tests
                     x.RemoveFromSet("my-key", "different-value");
                 });
 
-                var recordCount = database.Set.Count(new BsonDocument());
+                var recordCount = database.Set.AsQueryable().Count();
 
                 Assert.Equal(1, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void RemoveFromSet_DoesNotRemoveRecord_WithSameValue_AndDifferentKey()
+        public void RemoveFromSet_DoesNotRemoveRecords_WithDifferentKeyAndSameValue()
         {
             UseConnection(database =>
             {
@@ -448,20 +446,20 @@ namespace Hangfire.Mongo.Tests
                     x.RemoveFromSet("different-key", "my-value");
                 });
 
-                var recordCount = database.Set.Count(new BsonDocument());
+                var recordCount = database.Set.AsQueryable().Count();
 
                 Assert.Equal(1, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void InsertToList_AddsARecord_WithGivenValues()
+        public void InsertToList_AddsNewRecord_ForNewKeyAndValue()
         {
             UseConnection(database =>
             {
                 Commit(database, x => x.InsertToList("my-key", "my-value"));
 
-                ListDto record = database.List.Find(new BsonDocument()).ToList().Single();
+                ListDto record = database.List.AsQueryable().Single();
 
                 Assert.Equal("my-key", record.Key);
                 Assert.Equal("my-value", record.Value);
@@ -469,7 +467,7 @@ namespace Hangfire.Mongo.Tests
         }
 
         [Fact, CleanDatabase]
-        public void InsertToList_AddsAnotherRecord_WhenBothKeyAndValueAreExist()
+        public void InsertToList_AddsNewRecord_ForExistingKeyAndValue()
         {
             UseConnection(database =>
             {
@@ -479,14 +477,14 @@ namespace Hangfire.Mongo.Tests
                     x.InsertToList("my-key", "my-value");
                 });
 
-                var recordCount = database.List.Count(new BsonDocument());
+                var recordCount = database.List.AsQueryable().Count();
 
                 Assert.Equal(2, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void RemoveFromList_RemovesAllRecords_WithGivenKeyAndValue()
+        public void RemoveFromList_RemovesAllRecords_ForGivenKeyAndValue()
         {
             UseConnection(database =>
             {
@@ -497,14 +495,14 @@ namespace Hangfire.Mongo.Tests
                     x.RemoveFromList("my-key", "my-value");
                 });
 
-                var recordCount = database.List.Count(new BsonDocument());
+                var recordCount = database.List.AsQueryable().Count();
 
                 Assert.Equal(0, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void RemoveFromList_DoesNotRemoveRecords_WithSameKey_ButDifferentValue()
+        public void RemoveFromList_DoesNotRemoveRecords_WithSameKeyAndDifferentValue()
         {
             UseConnection(database =>
             {
@@ -514,14 +512,14 @@ namespace Hangfire.Mongo.Tests
                     x.RemoveFromList("my-key", "different-value");
                 });
 
-                var recordCount = database.List.Count(new BsonDocument());
+                var recordCount = database.List.AsQueryable().Count();
 
                 Assert.Equal(1, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void RemoveFromList_DoesNotRemoveRecords_WithSameValue_ButDifferentKey()
+        public void RemoveFromList_DoesNotRemoveRecords_WithDifferentKeyAndSameValue()
         {
             UseConnection(database =>
             {
@@ -531,14 +529,14 @@ namespace Hangfire.Mongo.Tests
                     x.RemoveFromList("different-key", "my-value");
                 });
 
-                var recordCount = database.List.Count(new BsonDocument());
+                var recordCount = database.List.AsQueryable().Count();
 
                 Assert.Equal(1, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void TrimList_TrimsAList_ToASpecifiedRange()
+        public void TrimList_TrimsListToASpecifiedRange()
         {
             UseConnection(database =>
             {
@@ -551,7 +549,7 @@ namespace Hangfire.Mongo.Tests
                     x.TrimList("my-key", 1, 2);
                 });
 
-                ListDto[] records = database.List.Find(new BsonDocument()).ToList().ToArray();
+                ListDto[] records = database.List.AsQueryable().ToArray();
 
                 Assert.Equal(2, records.Length);
                 Assert.Equal("1", records[0].Value);
@@ -560,7 +558,7 @@ namespace Hangfire.Mongo.Tests
         }
 
         [Fact, CleanDatabase]
-        public void TrimList_RemovesRecordsToEnd_IfKeepAndingAt_GreaterThanMaxElementIndex()
+        public void TrimList_RemovesRecordsToEnd_IfKeepEndingAtIsGreaterThanItemsCountMinusOne()
         {
             UseConnection(database =>
             {
@@ -572,14 +570,14 @@ namespace Hangfire.Mongo.Tests
                     x.TrimList("my-key", 1, 100);
                 });
 
-                var recordCount = database.List.Count(new BsonDocument());
+                var recordCount = database.List.AsQueryable().Count();
 
                 Assert.Equal(2, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void TrimList_RemovesAllRecords_WhenStartingFromValue_GreaterThanMaxElementIndex()
+        public void TrimList_RemovesAllRecords_IfKeepStartingFromIsGreaterThanItemsCountMinusOne()
         {
             UseConnection(database =>
             {
@@ -589,14 +587,14 @@ namespace Hangfire.Mongo.Tests
                     x.TrimList("my-key", 1, 100);
                 });
 
-                var recordCount = database.List.Count(new BsonDocument());
+                var recordCount = database.List.AsQueryable().Count();
 
                 Assert.Equal(0, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void TrimList_RemovesAllRecords_IfStartFromGreaterThanEndingAt()
+        public void TrimList_RemovesAllRecords_IfKeepStartingFromIsGreaterThanKeepEndingAt()
         {
             UseConnection(database =>
             {
@@ -606,14 +604,14 @@ namespace Hangfire.Mongo.Tests
                     x.TrimList("my-key", 1, 0);
                 });
 
-                var recordCount = database.List.Count(new BsonDocument());
+                var recordCount = database.List.AsQueryable().Count();
 
                 Assert.Equal(0, recordCount);
             });
         }
 
         [Fact, CleanDatabase]
-        public void TrimList_RemovesRecords_OnlyOfAGivenKey()
+        public void TrimList_RemovesRecords_OnlyForGivenKey()
         {
             UseConnection(database =>
             {
@@ -623,7 +621,7 @@ namespace Hangfire.Mongo.Tests
                     x.TrimList("another-key", 1, 0);
                 });
 
-                var recordCount = database.List.Count(new BsonDocument());
+                var recordCount = database.List.AsQueryable().Count();
 
                 Assert.Equal(1, recordCount);
             });
@@ -634,10 +632,8 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(database =>
             {
-                ArgumentNullException exception = Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("key",
                     () => Commit(database, x => x.SetRangeInHash(null, new Dictionary<string, string>())));
-
-                Assert.Equal("key", exception.ParamName);
             });
         }
 
@@ -646,10 +642,8 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(database =>
             {
-                var exception = Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("keyValuePairs",
                     () => Commit(database, x => x.SetRangeInHash("some-hash", null)));
-
-                Assert.Equal("keyValuePairs", exception.ParamName);
             });
         }
 
@@ -659,13 +653,14 @@ namespace Hangfire.Mongo.Tests
             UseConnection(database =>
             {
                 Commit(database, x => x.SetRangeInHash("some-hash", new Dictionary<string, string>
-                        {
-                            { "Key1", "Value1" },
-                            { "Key2", "Value2" }
-                        }));
+                {
+                    { "Key1", "Value1" },
+                    { "Key2", "Value2" }
+                }));
 
-                var result = database.Hash.Find(Builders<HashDto>.Filter.Eq(_ => _.Key, "some-hash")).ToList()
-                    .ToDictionary(x => x.Field, x => x.Value);
+                var result = database.Hash.AsQueryable()
+                    .Where(_ => _.Key == "some-hash")
+                    .ToDictionary(_ => _.Field, _ => _.Value);
 
                 Assert.Equal("Value1", result["Key1"]);
                 Assert.Equal("Value2", result["Key2"]);
@@ -677,7 +672,7 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(database =>
             {
-                Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("key",
                     () => Commit(database, x => x.RemoveHash(null)));
             });
         }
@@ -689,16 +684,16 @@ namespace Hangfire.Mongo.Tests
             {
                 // Arrange
                 Commit(database, x => x.SetRangeInHash("some-hash", new Dictionary<string, string>
-                        {
-                            { "Key1", "Value1" },
-                            { "Key2", "Value2" }
-                        }));
+                {
+                    { "Key1", "Value1" },
+                    { "Key2", "Value2" }
+                }));
 
                 // Act
                 Commit(database, x => x.RemoveHash("some-hash"));
 
                 // Assert
-                var count = database.Hash.Count(new BsonDocument());
+                var count = database.Hash.AsQueryable().Count();
                 Assert.Equal(0, count);
             });
         }
@@ -717,7 +712,8 @@ namespace Hangfire.Mongo.Tests
                 Commit(database, x => x.ExpireSet(set1.Key, TimeSpan.FromDays(1)));
 
                 var testSet1 = GetTestSet(database, set1.Key).FirstOrDefault();
-                Assert.True(database.GetServerTimeUtc().AddMinutes(-1) < testSet1.ExpireAt && testSet1.ExpireAt <= database.GetServerTimeUtc().AddDays(1));
+                Assert.True(testSet1.ExpireAt > database.GetServerTimeUtc().AddHours(23));
+                Assert.True(testSet1.ExpireAt < database.GetServerTimeUtc().AddHours(25));
 
                 var testSet2 = GetTestSet(database, set2.Key).FirstOrDefault();
                 Assert.NotNull(testSet2);
@@ -739,7 +735,8 @@ namespace Hangfire.Mongo.Tests
                 Commit(database, x => x.ExpireList(list1.Key, TimeSpan.FromDays(1)));
 
                 var testList1 = GetTestList(database, list1.Key);
-                Assert.True(database.GetServerTimeUtc().AddMinutes(-1) < testList1.ExpireAt && testList1.ExpireAt <= database.GetServerTimeUtc().AddDays(1));
+                Assert.True(testList1.ExpireAt > database.GetServerTimeUtc().AddHours(23));
+                Assert.True(testList1.ExpireAt < database.GetServerTimeUtc().AddHours(25));
 
                 var testList2 = GetTestList(database, list2.Key);
                 Assert.Null(testList2.ExpireAt);
@@ -760,14 +757,14 @@ namespace Hangfire.Mongo.Tests
                 Commit(database, x => x.ExpireHash(hash1.Key, TimeSpan.FromDays(1)));
 
                 var testHash1 = GetTestHash(database, hash1.Key);
-                Assert.True(database.GetServerTimeUtc().AddMinutes(-1) < testHash1.ExpireAt && testHash1.ExpireAt <= database.GetServerTimeUtc().AddDays(1));
+                Assert.True(testHash1.ExpireAt > database.GetServerTimeUtc().AddHours(23));
+                Assert.True(testHash1.ExpireAt < database.GetServerTimeUtc().AddHours(25));
 
                 var testHash2 = GetTestHash(database, hash2.Key);
                 Assert.Null(testHash2.ExpireAt);
             });
         }
-
-
+        
         [Fact, CleanDatabase]
         public void PersistSet_ClearsTheSetExpirationData()
         {
@@ -857,8 +854,7 @@ namespace Hangfire.Mongo.Tests
                 Assert.Equal(1, testSet2.Count);
             });
         }
-
-
+        
         [Fact, CleanDatabase]
         public void RemoveSet_ClearsTheSetData()
         {
@@ -882,26 +878,25 @@ namespace Hangfire.Mongo.Tests
                 Assert.Equal(1, testSet2.Count);
             });
         }
-
-
+        
         private static JobDto GetTestJob(HangfireDbContext database, string jobId)
         {
-            return database.Job.Find(Builders<JobDto>.Filter.Eq(_ => _.Id, jobId)).FirstOrDefault();
+            return database.Job.AsQueryable().FirstOrDefault(_ => _.Id == jobId);
         }
 
         private static IList<SetDto> GetTestSet(HangfireDbContext database, string key)
         {
-            return database.Set.Find(Builders<SetDto>.Filter.Eq(_ => _.Key, key)).ToList();
+            return database.Set.AsQueryable().Where(_ => _.Key == key).ToList();
         }
 
         private static ListDto GetTestList(HangfireDbContext database, string key)
         {
-            return database.List.Find(Builders<ListDto>.Filter.Eq(_ => _.Key, key)).FirstOrDefault();
+            return database.List.AsQueryable().FirstOrDefault(_ => _.Key == key);
         }
 
         private static HashDto GetTestHash(HangfireDbContext database, string key)
         {
-            return database.Hash.Find(Builders<HashDto>.Filter.Eq(_ => _.Key, key)).FirstOrDefault();
+            return database.Hash.AsQueryable().FirstOrDefault(_ => _.Key == key);
         }
 
         private void UseConnection(Action<HangfireDbContext> action)
@@ -911,15 +906,14 @@ namespace Hangfire.Mongo.Tests
                 action(connection);
             }
         }
-
+        
         private void Commit(HangfireDbContext connection, Action<MongoWriteOnlyTransaction> action)
         {
-            using (MongoWriteOnlyTransaction transaction = new MongoWriteOnlyTransaction(connection, _queueProviders))
+            using (var transaction = new MongoWriteOnlyTransaction(connection, _queueProviders))
             {
                 action(transaction);
                 transaction.Commit();
             }
         }
     }
-#pragma warning restore 1591
 }

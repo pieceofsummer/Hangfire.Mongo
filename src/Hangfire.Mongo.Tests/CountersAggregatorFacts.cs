@@ -14,7 +14,7 @@ namespace Hangfire.Mongo.Tests
         [Fact, CleanDatabase]
         public void ThrowsOperationCanceledException_IfTokenCanceled()
         {
-            var storage = new MongoStorage(ConnectionUtils.GetConnectionString(), ConnectionUtils.GetDatabaseName());
+            using (var storage = ConnectionUtils.CreateStorage())
             using (var connection = (MongoConnection)storage.GetConnection())
             {
                 // Arrange
@@ -41,7 +41,7 @@ namespace Hangfire.Mongo.Tests
         [Fact, CleanDatabase]
         public void AggregatesValueCorrectly()
         {
-            var storage = new MongoStorage(ConnectionUtils.GetConnectionString(), ConnectionUtils.GetDatabaseName());
+            using (var storage = ConnectionUtils.CreateStorage())
             using (var connection = (MongoConnection)storage.GetConnection())
             {
                 // Arrange
@@ -65,7 +65,7 @@ namespace Hangfire.Mongo.Tests
                 });
 
                 var aggregator = new CountersAggregator(storage, TimeSpan.Zero);
-                
+
                 // Act
                 aggregator.Execute(new CancellationToken());
 
@@ -83,7 +83,7 @@ namespace Hangfire.Mongo.Tests
         [Fact, CleanDatabase]
         public void AggregatedExpirationDate_Updates_IfCountersExpireLater()
         {
-            var storage = new MongoStorage(ConnectionUtils.GetConnectionString(), ConnectionUtils.GetDatabaseName());
+            using (var storage = ConnectionUtils.CreateStorage())
             using (var connection = (MongoConnection)storage.GetConnection())
             {
                 var date = DateTime.UtcNow;
@@ -115,7 +115,7 @@ namespace Hangfire.Mongo.Tests
                 Assert.Equal(1, connection.Database.AggregatedCounter.Count(new BsonDocument()));
 
                 var row = connection.Database.AggregatedCounter.AsQueryable().Single();
-                
+
                 Assert.Equal(3, row.Value);
                 Assert.Equal(date.AddMinutes(5), row.ExpireAt);
             }
@@ -124,7 +124,7 @@ namespace Hangfire.Mongo.Tests
         [Fact, CleanDatabase]
         public void AggregatedExpirationDate_DoesNotUpdate_IfCountersExpireBefore()
         {
-            var storage = new MongoStorage(ConnectionUtils.GetConnectionString(), ConnectionUtils.GetDatabaseName());
+            using (var storage = ConnectionUtils.CreateStorage())
             using (var connection = (MongoConnection)storage.GetConnection())
             {
                 var date = DateTime.UtcNow;

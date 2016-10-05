@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Hangfire.Mongo.Tests
 {
-#pragma warning disable 1591
     [Collection("Database")]
     public class MongoStorageOptionsFacts
     {
@@ -22,7 +21,7 @@ namespace Hangfire.Mongo.Tests
         public void Ctor_SetsTheDefaultOptions_ShouldGenerateClientId()
         {
             var options = new MongoStorageOptions();
-            Assert.False(String.IsNullOrWhiteSpace(options.ClientId));
+            Assert.False(string.IsNullOrWhiteSpace(options.ClientId));
         }
 
         [Fact]
@@ -41,7 +40,7 @@ namespace Hangfire.Mongo.Tests
         public void Set_QueuePollInterval_ShouldThrowAnException_WhenGivenIntervalIsEqualToZero()
         {
             var options = new MongoStorageOptions();
-            Assert.Throws<ArgumentException>(
+            Assert.Throws<ArgumentException>("value",
                 () => options.QueuePollInterval = TimeSpan.Zero);
         }
 
@@ -49,7 +48,7 @@ namespace Hangfire.Mongo.Tests
         public void Set_QueuePollInterval_ShouldThrowAnException_WhenGivenIntervalIsNegative()
         {
             var options = new MongoStorageOptions();
-            Assert.Throws<ArgumentException>(
+            Assert.Throws<ArgumentException>("value",
                 () => options.QueuePollInterval = TimeSpan.FromSeconds(-1));
         }
 
@@ -63,5 +62,4 @@ namespace Hangfire.Mongo.Tests
             Assert.Equal(TimeSpan.FromSeconds(1), options.QueuePollInterval);
         }
     }
-#pragma warning restore 1591
 }

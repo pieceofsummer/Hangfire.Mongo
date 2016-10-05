@@ -1,11 +1,9 @@
 namespace Hangfire.Mongo.PersistentJobQueue
 {
-#pragma warning disable 1591
-    public class EnqueuedAndFetchedCountDto
+    internal class EnqueuedAndFetchedCountDto
     {
         public int? EnqueuedCount { get; set; }
 
         public int? FetchedCount { get; set; }
     }
-#pragma warning restore 1591
 }

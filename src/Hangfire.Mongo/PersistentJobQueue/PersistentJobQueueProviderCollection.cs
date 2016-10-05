@@ -1,15 +1,17 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Hangfire.Mongo.PersistentJobQueue
 {
-#pragma warning disable 1591
-    public class PersistentJobQueueProviderCollection : IEnumerable<IPersistentJobQueueProvider>
+    internal class PersistentJobQueueProviderCollection : IEnumerable<IPersistentJobQueueProvider>, IDisposable
     {
-        private readonly List<IPersistentJobQueueProvider> _providers = new List<IPersistentJobQueueProvider>();
+        private readonly List<IPersistentJobQueueProvider> _providers 
+            = new List<IPersistentJobQueueProvider>();
 
-        private readonly Dictionary<string, IPersistentJobQueueProvider> _providersByQueue = new Dictionary<string, IPersistentJobQueueProvider>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IPersistentJobQueueProvider> _providersByQueue 
+            = new Dictionary<string, IPersistentJobQueueProvider>(StringComparer.OrdinalIgnoreCase);
 
         private readonly IPersistentJobQueueProvider _defaultProvider;
 
@@ -39,9 +41,7 @@ namespace Hangfire.Mongo.PersistentJobQueue
 
         public IPersistentJobQueueProvider GetProvider(string queue)
         {
-            return _providersByQueue.ContainsKey(queue)
-                ? _providersByQueue[queue]
-                : _defaultProvider;
+            return _providersByQueue.TryGetValue(queue, _defaultProvider);
         }
 
         public IEnumerator<IPersistentJobQueueProvider> GetEnumerator()
@@ -53,6 +53,13 @@ namespace Hangfire.Mongo.PersistentJobQueue
         {
             return GetEnumerator();
         }
+
+        public void Dispose()
+        {
+            foreach (var disposable in _providers.OfType<IDisposable>())
+            {
+                disposable.Dispose();
+            }
+        }
     }
-#pragma warning restore 1591
 }

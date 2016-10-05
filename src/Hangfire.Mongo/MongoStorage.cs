@@ -16,16 +16,13 @@ namespace Hangfire.Mongo
     /// <summary>
     /// Hangfire Job Storage implementation for Mongo database
     /// </summary>
-    public class MongoStorage : JobStorage
+    public class MongoStorage : JobStorage, IDisposable
     {
-        private readonly string _connectionString;
-
         private static readonly Regex ConnectionStringCredentials = new Regex("mongodb://(.*?)@", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private readonly string _connectionString;
         private readonly string _databaseName;
-
         private readonly MongoClientSettings _mongoClientSettings;
-
         private readonly MongoStorageOptions _options;
 
         /// <summary>
@@ -60,7 +57,7 @@ namespace Hangfire.Mongo
             _options = options;
 
             Connection = new HangfireDbContext(connectionString, databaseName, options.Prefix);
-            var defaultQueueProvider = new MongoJobQueueProvider(options);
+            var defaultQueueProvider = new MongoJobQueueProvider(this, options);
             QueueProviders = new PersistentJobQueueProviderCollection(defaultQueueProvider);
         }
 
@@ -96,19 +93,19 @@ namespace Hangfire.Mongo
             _options = options;
 
             Connection = new HangfireDbContext(mongoClientSettings, databaseName, options.Prefix);
-            var defaultQueueProvider = new MongoJobQueueProvider(options);
+            var defaultQueueProvider = new MongoJobQueueProvider(this, options);
             QueueProviders = new PersistentJobQueueProviderCollection(defaultQueueProvider);
         }
-
+        
         /// <summary>
         /// Database context
         /// </summary>
-        public HangfireDbContext Connection { get; }
+        internal HangfireDbContext Connection { get; }
 
         /// <summary>
         /// Queue providers collection
         /// </summary>
-        public PersistentJobQueueProviderCollection QueueProviders { get; }
+        internal PersistentJobQueueProviderCollection QueueProviders { get; }
 
         /// <summary>
         /// Returns Monitoring API object
@@ -185,6 +182,15 @@ namespace Hangfire.Mongo
             }
             return $"Connection string: {obscuredConnectionString}, database name: {_databaseName}, prefix: {_options.Prefix}";
 
+        }
+
+        /// <summary>
+        /// Disposes the object
+        /// </summary>
+        public void Dispose()
+        {
+            QueueProviders.Dispose();
+            Connection.Dispose();
         }
     }
 }

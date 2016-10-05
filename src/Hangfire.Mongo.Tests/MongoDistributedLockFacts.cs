@@ -1,6 +1,6 @@
 ﻿using System;
+using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Hangfire.Mongo.Database;
 using Hangfire.Mongo.DistributedLock;
 using Hangfire.Mongo.Dto;
@@ -8,11 +8,11 @@ using Hangfire.Mongo.MongoUtils;
 using Hangfire.Mongo.Tests.Utils;
 using Hangfire.Storage;
 using MongoDB.Driver;
+using MongoDB.Driver.Linq;
 using Xunit;
 
 namespace Hangfire.Mongo.Tests
 {
-#pragma warning disable 1591
     [Collection("Database")]
     public class MongoDistributedLockFacts
     {
@@ -21,20 +21,26 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(database =>
             {
-                var exception = Assert.Throws<ArgumentNullException>(
+                Assert.Throws<ArgumentNullException>("resource",
                     () => new MongoDistributedLock(null, TimeSpan.FromSeconds(1), database, new MongoStorageOptions()));
-
-                Assert.Equal("resource", exception.ParamName);
             });
         }
 
         [Fact]
         public void Ctor_ThrowsAnException_WhenConnectionIsNull()
         {
-            var exception = Assert.Throws<ArgumentNullException>(
+            Assert.Throws<ArgumentNullException>("database",
                 () => new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), null, new MongoStorageOptions()));
-
-            Assert.Equal("database", exception.ParamName);
+        }
+        
+        [Fact]
+        public void Ctor_ThrowsAnException_WhenOptionsIsNull()
+        {
+            UseConnection(database =>
+            {
+                Assert.Throws<ArgumentNullException>("options",
+                    () => new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, null));
+            });
         }
 
         [Fact, CleanDatabase]
@@ -44,7 +50,10 @@ namespace Hangfire.Mongo.Tests
             {
                 using (new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, new MongoStorageOptions()))
                 {
-                    var locksCount = database.DistributedLock.Count(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, "resource1"));
+                    var locksCount = database.DistributedLock.AsQueryable()
+                        .Where(_ => _.Resource == "resource1")
+                        .Count();
+                    
                     Assert.Equal(1, locksCount);
                 }
             });
@@ -55,14 +64,16 @@ namespace Hangfire.Mongo.Tests
         {
             UseConnection(database =>
             {
-                long locksCount;
+                var locksCount = database.DistributedLock.AsQueryable().Count(_ => _.Resource == "resource1");
+                Assert.Equal(0, locksCount);
+
                 using (new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, new MongoStorageOptions()))
                 {
-                    locksCount = database.DistributedLock.Count(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, "resource1"));
+                    locksCount = database.DistributedLock.AsQueryable().Count(_ => _.Resource == "resource1");
                     Assert.Equal(1, locksCount);
                 }
 
-                locksCount = database.DistributedLock.Count(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, "resource1"));
+                locksCount = database.DistributedLock.AsQueryable().Count(_ => _.Resource == "resource1");
                 Assert.Equal(0, locksCount);
             });
         }
@@ -74,12 +85,12 @@ namespace Hangfire.Mongo.Tests
             {
                 using (new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, new MongoStorageOptions()))
                 {
-                    var locksCount = database.DistributedLock.Count(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, "resource1"));
+                    var locksCount = database.DistributedLock.AsQueryable().Count(_ => _.Resource == "resource1");
                     Assert.Equal(1, locksCount);
 
                     using (new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, new MongoStorageOptions()))
                     {
-                        locksCount = database.DistributedLock.Count(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, "resource1"));
+                        locksCount = database.DistributedLock.AsQueryable().Count(_ => _.Resource == "resource1");
                         Assert.Equal(1, locksCount);
                     }
                 }
@@ -93,29 +104,19 @@ namespace Hangfire.Mongo.Tests
             {
                 using (new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, new MongoStorageOptions()))
                 {
-                    var locksCount = database.DistributedLock.Count(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, "resource1"));
+                    var locksCount = database.DistributedLock.AsQueryable().Count(_ => _.Resource == "resource1");
                     Assert.Equal(1, locksCount);
 
-                    Task.Run(() =>
+                    using (new ParallelThread(
+                        () => Assert.Throws<DistributedLockTimeoutException>(
+                            () => new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, new MongoStorageOptions()))))
                     {
-                        Assert.Throws<DistributedLockTimeoutException>(() => new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, new MongoStorageOptions()));
-                    }).Wait();
+                        // wait
+                    }
                 }
             });
         }
-
-        [Fact]
-        public void Ctor_ThrowsAnException_WhenOptionsIsNull()
-        {
-            UseConnection(database =>
-            {
-                var exception = Assert.Throws<ArgumentNullException>(
-                    () => new MongoDistributedLock("resource1", TimeSpan.FromSeconds(1), database, null));
-
-                Assert.Equal("options", exception.ParamName);
-            });
-        }
-
+        
         [Fact, CleanDatabase]
         public void Ctor_SetLockHeartbeatWorks_WhenResourceIsNotLocked()
         {
@@ -128,7 +129,7 @@ namespace Hangfire.Mongo.Tests
                     DateTime initialExpireAt = database.GetServerTimeUtc() + options.DistributedLockLifetime;
                     Thread.Sleep(TimeSpan.FromSeconds(5));
 
-                    DistributedLockDto lockEntry = database.DistributedLock.Find(Builders<DistributedLockDto>.Filter.Eq(_ => _.Resource, "resource1")).FirstOrDefault();
+                    DistributedLockDto lockEntry = database.DistributedLock.AsQueryable().SingleOrDefault(_ => _.Resource == "resource1");
                     Assert.NotNull(lockEntry);
                     Assert.True(lockEntry.ExpireAt > initialExpireAt);
                 }
@@ -143,5 +144,4 @@ namespace Hangfire.Mongo.Tests
             }
         }
     }
-#pragma warning restore 1591
 }

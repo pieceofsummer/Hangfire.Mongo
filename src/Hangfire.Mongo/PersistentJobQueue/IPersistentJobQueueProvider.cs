@@ -2,12 +2,10 @@
 
 namespace Hangfire.Mongo.PersistentJobQueue
 {
-#pragma warning disable 1591
-    public interface IPersistentJobQueueProvider
+    internal interface IPersistentJobQueueProvider
     {
-        IPersistentJobQueue GetJobQueue(HangfireDbContext connection);
+        IPersistentJobQueue GetJobQueue();
 
-        IPersistentJobQueueMonitoringApi GetJobQueueMonitoringApi(HangfireDbContext connection);
+        IPersistentJobQueueMonitoringApi GetJobQueueMonitoringApi();
     }
-#pragma warning restore 1591
 }

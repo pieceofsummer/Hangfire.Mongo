@@ -36,3 +36,4 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyInformationalVersion("0.2.6")]
 [assembly: AssemblyFileVersion("0.2.6")]
 [assembly: InternalsVisibleTo("Hangfire.Mongo.Tests")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
