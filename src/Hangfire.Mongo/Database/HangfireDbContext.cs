@@ -63,10 +63,6 @@ namespace Hangfire.Mongo.Database
         
         private void ClasterBuilderCallback(ClusterBuilder builder)
         {
-            //builder.Subscribe<ConnectionSentMessagesEvent>(OnSentMessages);
-            //builder.Subscribe<ConnectionReceivedMessageEvent>(OnReceivedMessage);
-            //builder.Subscribe<ClusterSelectedServerEvent>(OnServerSelected);
-
             builder.Subscribe<CommandStartedEvent>(OnCommandStarted);
             builder.Subscribe<CommandSucceededEvent>(OnCommandSucceeded);
             builder.Subscribe<CommandFailedEvent>(OnCommandFailed);
