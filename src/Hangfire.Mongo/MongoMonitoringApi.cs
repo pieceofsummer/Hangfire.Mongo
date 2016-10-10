@@ -69,7 +69,7 @@ namespace Hangfire.Mongo
 
         public IList<ServerDto> Servers()
         {
-            var servers = UseConnection(connection => connection.Server.Find(new BsonDocument()).ToList());
+            var servers = UseConnection(connection => connection.Server.AsQueryable().ToList());
 
             var result = new List<ServerDto>(servers.Count);
 
@@ -145,7 +145,7 @@ namespace Hangfire.Mongo
                 stats.Processing = countByState.TryGetValue(ProcessingState.StateName);
                 stats.Scheduled = countByState.TryGetValue(ScheduledState.StateName);
 
-                stats.Servers = connection.Server.Count(new BsonDocument());
+                stats.Servers = connection.Server.AsQueryable().Count();
 
                 using (var cn = new MongoConnection(connection, _queueProviders))
                 {
@@ -194,7 +194,10 @@ namespace Hangfire.Mongo
 
         public JobList<ScheduledJobDto> ScheduledJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobsByStateName(connection, from, count, ScheduledState.StateName,
+            return UseConnection(connection => GetJobsByStateName(
+                connection, 
+                from, count, 
+                ScheduledState.StateName,
                 (detailedJob, job, stateData) => new ScheduledJobDto
                 {
                     Job = job,
@@ -205,7 +208,10 @@ namespace Hangfire.Mongo
 
         public JobList<SucceededJobDto> SucceededJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobsByStateName(connection, from, count, SucceededState.StateName,
+            return UseConnection(connection => GetJobsByStateName(
+                connection, 
+                from, count, 
+                SucceededState.StateName,
                 (detailedJob, job, stateData) => new SucceededJobDto
                 {
                     Job = job,
@@ -219,7 +225,10 @@ namespace Hangfire.Mongo
 
         public JobList<FailedJobDto> FailedJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobsByStateName(connection, from, count, FailedState.StateName,
+            return UseConnection(connection => GetJobsByStateName(
+                connection, 
+                from, count, 
+                FailedState.StateName,
                 (detailedJob, job, stateData) => new FailedJobDto
                 {
                     Job = job,
@@ -233,7 +242,10 @@ namespace Hangfire.Mongo
 
         public JobList<DeletedJobDto> DeletedJobs(int from, int count)
         {
-            return UseConnection(connection => GetJobsByStateName(connection, from, count, DeletedState.StateName,
+            return UseConnection(connection => GetJobsByStateName(
+                connection, 
+                from, count, 
+                DeletedState.StateName,
                 (detailedJob, job, stateData) => new DeletedJobDto
                 {
                     Job = job,
