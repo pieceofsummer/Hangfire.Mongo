@@ -221,6 +221,8 @@ namespace Hangfire.Mongo.Tests
                 InvocationData = JobHelper.ToJson(InvocationData.Serialize(job)),
                 Arguments = "['\\\"Arguments\\\"']",
                 StateName = stateName,
+                StateReason = jobState.Reason,
+                StateData = jobState.Data,
                 CreatedAt = createdAt,
                 StateId = jobState.Id,
                 Queue = DefaultQueue,

@@ -273,6 +273,9 @@ namespace Hangfire.Mongo.Tests
                 database.State.InsertOne(stateDto);
 
                 jobDto.StateId = stateDto.Id;
+                jobDto.StateName = stateDto.Name;
+                jobDto.StateReason = stateDto.Reason;
+                jobDto.StateData = stateDto.Data;
                 database.Job.ReplaceOne(_ => _.Id == jobDto.Id, jobDto, new UpdateOptions());
 
                 var result = connection.GetStateData(jobId);

@@ -312,22 +312,10 @@ namespace Hangfire.Mongo
         {
             var jobs = connection.Job.AsQueryable()
                 .Where(_ => jobIds.Contains(_.Id))
-                .GroupJoin(connection.State.AsQueryable(), _ => _.StateId, _ => _.Id, (j, s) => new JobDetailedDto
-                {
-                    Id = j.Id,
-                    StateId = j.StateId,
-                    StateName = j.StateName,
-                    InvocationData = j.InvocationData,
-                    Arguments = j.Arguments,
-                    CreatedAt = j.CreatedAt,
-                    ExpireAt = j.ExpireAt,
-                    StateReason = s.First().Reason,
-                    StateData = s.First().Data
-                })
                 .ToDictionary(_ => _.Id);
             
             var orderedJobs = jobIds
-                .Select(jobId => jobs.TryGetValue(jobId, _ => new JobDetailedDto { Id = _ }))
+                .Select(jobId => jobs.TryGetValue(jobId, _ => new JobDto { Id = _ }))
                 .ToList();
 
             return DeserializeJobs(orderedJobs,
@@ -341,7 +329,7 @@ namespace Hangfire.Mongo
                 });
         }
 
-        private static JobList<TDto> DeserializeJobs<TDto>(ICollection<JobDetailedDto> jobs, Func<JobDetailedDto, Job, Dictionary<string, string>, TDto> selector)
+        private static JobList<TDto> DeserializeJobs<TDto>(ICollection<JobDto> jobs, Func<JobDto, Job, Dictionary<string, string>, TDto> selector)
         {
             var result = new List<KeyValuePair<string, TDto>>(jobs.Count);
 
@@ -386,18 +374,6 @@ namespace Hangfire.Mongo
         {
             var jobs = connection.Job.AsQueryable()
                 .Where(_ => jobIds.Contains(_.Id))
-                .GroupJoin(connection.State.AsQueryable(), _ => _.StateId, _ => _.Id, (j, s) => new JobDetailedDto
-                {
-                    Id = j.Id,
-                    StateId = j.StateId,
-                    StateName = j.StateName,
-                    InvocationData = j.InvocationData,
-                    Arguments = j.Arguments,
-                    CreatedAt = j.CreatedAt,
-                    ExpireAt = j.ExpireAt,
-                    StateReason = s.First().Reason,
-                    StateData = s.First().Data
-                })
                 .ToList();
             
             var result = new List<KeyValuePair<string, FetchedJobDto>>(jobs.Count);
@@ -418,25 +394,13 @@ namespace Hangfire.Mongo
             return new JobList<FetchedJobDto>(result);
         }
 
-        private static JobList<TDto> GetJobsByStateName<TDto>(HangfireDbContext connection, int from, int count, string stateName, Func<JobDetailedDto, Job, Dictionary<string, string>, TDto> selector)
+        private static JobList<TDto> GetJobsByStateName<TDto>(HangfireDbContext connection, int from, int count, string stateName, Func<JobDto, Job, Dictionary<string, string>, TDto> selector)
         {
             var jobs = connection.Job.AsQueryable()
                 .Where(_ => _.StateName == stateName)
                 .OrderByDescending(_ => _.Id)
                 .Skip(from)
                 .Take(count)
-                .GroupJoin(connection.State.AsQueryable(), _ => _.StateId, _ => _.Id, (j, s) => new JobDetailedDto
-                {
-                    Id = j.Id,
-                    StateId = j.StateId,
-                    StateName = j.StateName,
-                    InvocationData = j.InvocationData,
-                    Arguments = j.Arguments,
-                    CreatedAt = j.CreatedAt,
-                    ExpireAt = j.ExpireAt,
-                    StateReason = s.First().Reason,
-                    StateData = s.First().Data
-                })
                 .ToList();
             
             return DeserializeJobs(jobs, selector);

@@ -10,12 +10,6 @@ namespace Hangfire.Mongo.Dto
         [BsonId, BsonRepresentation(BsonType.ObjectId)]
         public string Id { get; set; }
 
-        [BsonIgnoreIfNull, BsonRepresentation(BsonType.ObjectId)]
-        public string StateId { get; set; }
-
-        [BsonIgnoreIfNull]
-        public string StateName { get; set; }
-
         [BsonRequired]
         public string InvocationData { get; set; }
 
@@ -28,10 +22,30 @@ namespace Hangfire.Mongo.Dto
         [BsonIgnoreIfNull]
         public DateTime? ExpireAt { get; set; }
 
+        #region Job state
+
+        [BsonIgnoreIfNull, BsonRepresentation(BsonType.ObjectId)]
+        public string StateId { get; set; }
+
+        [BsonIgnoreIfNull]
+        public string StateName { get; set; }
+
+        [BsonIgnoreIfNull]
+        public string StateReason { get; set; }
+
+        [BsonIgnoreIfNull]
+        public string StateData { get; set; }
+
+        #endregion
+
+        #region Job queue
+
         [BsonIgnoreIfNull]
         public string Queue { get; set; }
 
         [BsonIgnoreIfNull]
         public DateTime? FetchedAt { get; set; }
+
+        #endregion
     }
 }

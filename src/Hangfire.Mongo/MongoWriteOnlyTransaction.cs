@@ -122,7 +122,9 @@ namespace Hangfire.Mongo
                 x.Job.UpdateOne(
                     Builders<JobDto>.Filter.Eq(_ => _.Id, jobId),
                     Builders<JobDto>.Update.Set(_ => _.StateId, stateDto.Id)
-                                           .Set(_ => _.StateName, state.Name));
+                                           .Set(_ => _.StateName, state.Name)
+                                           .Set(_ => _.StateReason, state.Reason)
+                                           .Set(_ => _.StateData, stateDto.Data));
             });
         }
 

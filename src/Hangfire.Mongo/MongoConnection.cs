@@ -189,19 +189,12 @@ namespace Hangfire.Mongo
 
             if (job == null || job.StateId == null)
                 return null;
-
-            var state = Database.State.AsQueryable()
-                .Where(_ => _.Id == job.StateId)
-                .SingleOrDefault();
-
-            if (state == null)
-                return null;
-
+            
             return new StateData
             {
-                Name = state.Name,
-                Reason = state.Reason,
-                Data = JobHelper.FromJson<Dictionary<string, string>>(state.Data)
+                Name = job.StateName,
+                Reason = job.StateReason,
+                Data = JobHelper.FromJson<Dictionary<string, string>>(job.StateData)
             };
         }
 
