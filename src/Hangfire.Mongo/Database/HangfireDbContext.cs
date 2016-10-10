@@ -315,10 +315,10 @@ namespace Hangfire.Mongo.Database
             // create indexes
             
             CreateIndex(Counter, "ix_key", ix => ix.Ascending(_ => _.Key));
-            CreateIndex(Hash, "ix_key_field", ix => ix.Ascending(_ => _.Key).Ascending(_ => _.Field));
-            CreateIndex(Job, "ix_queue_fetchedAt", ix => ix.Ascending(_ => _.Queue).Ascending(_ => _.FetchedAt));
+            CreateIndex(Hash, "ix_key_field", ix => ix.Ascending(_ => _.Key).Ascending(_ => _.Field), unique: true);
+            CreateIndex(Job, "ix_queue_fetchedAt", ix => ix.Ascending(_ => _.Queue).Ascending(_ => _.FetchedAt), sparse: true);
             CreateIndex(Job, "ix_stateName_id", ix => ix.Ascending(_ => _.StateName).Descending(_ => _.Id));
-            CreateIndex(JobParameter, "ix_jobId_name", ix => ix.Descending(_ => _.JobId).Ascending(_ => _.Name));
+            CreateIndex(JobParameter, "ix_jobId_name", ix => ix.Descending(_ => _.JobId).Ascending(_ => _.Name), unique: true);
             CreateIndex(List, "ix_key", ix => ix.Ascending(_ => _.Key));
             CreateIndex(Set, "ix_key", ix => ix.Ascending(_ => _.Key));
             CreateIndex(State, "ix_jobId_createdAt", ix => ix.Descending(_ => _.JobId).Descending(_ => _.CreatedAt));
@@ -346,12 +346,15 @@ namespace Hangfire.Mongo.Database
             });
         }
 
-        private void CreateIndex<TEntity>(IMongoCollection<TEntity> collection, string name, Func<IndexKeysDefinitionBuilder<TEntity>, IndexKeysDefinition<TEntity>> configure)
+        private void CreateIndex<TEntity>(IMongoCollection<TEntity> collection, string name, Func<IndexKeysDefinitionBuilder<TEntity>, IndexKeysDefinition<TEntity>> configure, 
+                                          bool? unique = null, bool? sparse = null)
         {
             collection.Indexes.CreateOne(configure(Builders<TEntity>.IndexKeys), new CreateIndexOptions()
             {
                 Name = name,
-                Background = true
+                Background = true,
+                Unique = unique,
+                Sparse = sparse
             });
         }
 

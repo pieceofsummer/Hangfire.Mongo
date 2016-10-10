@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
+using Hangfire.Mongo.Dto;
 
 namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 {
@@ -24,7 +25,10 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
         public IEnumerable<string> GetQueues()
         {
             return _storage.Connection.Job.AsQueryable()
-                .Where(_ => _.Queue != null)
+                // Required to use index FETCH instead of COLLSCAN
+                // (but haven't found a better way to use $exists operator yet)
+                .Where(_ => Builders<JobDto>.Filter.Exists("Queue", true).Inject())
+                .Where(_ => !string.IsNullOrEmpty(_.Queue))
                 .GroupBy(_ => _.Queue)
                 .Select(g => g.Key)
                 .ToList();
