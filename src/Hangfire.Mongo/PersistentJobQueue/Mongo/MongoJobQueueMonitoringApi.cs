@@ -66,7 +66,7 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
             // but you cannot write (d => d.FetchedAt ? 1 : 0) in LINQ, as DateTime? cannot be coerced to bool.
             // 
             // You definitely can write (d => d.FetchedAt.HasValue ? 1 : 0) instead, but it translates to a 
-            // slightly different query: '$cond: [ { $ne : [ "$FetchedAt", null ] }, 0, 1]', which would also 
+            // slightly different query: '$cond: [ { $ne : [ "$FetchedAt", null ] }, 1, 0 ]', which would also 
             // be fine if not https://jira.mongodb.org/browse/SERVER-13903. Because of that bug, comparison 
             // operators in projections are evaluated incorrectly if the field is missing from document.
             //
