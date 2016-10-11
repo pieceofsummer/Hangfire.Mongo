@@ -349,13 +349,26 @@ namespace Hangfire.Mongo.Database
         private void CreateIndex<TEntity>(IMongoCollection<TEntity> collection, string name, Func<IndexKeysDefinitionBuilder<TEntity>, IndexKeysDefinition<TEntity>> configure, 
                                           bool? unique = null, bool? sparse = null)
         {
-            collection.Indexes.CreateOne(configure(Builders<TEntity>.IndexKeys), new CreateIndexOptions()
+            var keys = configure(Builders<TEntity>.IndexKeys);
+
+            var options = new CreateIndexOptions()
             {
                 Name = name,
                 Background = true,
                 Unique = unique,
                 Sparse = sparse
-            });
+            };
+
+            try
+            {
+                collection.Indexes.CreateOne(keys, options);
+            }
+            catch (MongoCommandException ex) when (ex.Code == 85)
+            {
+                // index exists with different options
+                collection.Indexes.DropOne(name);
+                collection.Indexes.CreateOne(keys, options);
+            }
         }
 
 		/// <summary>
