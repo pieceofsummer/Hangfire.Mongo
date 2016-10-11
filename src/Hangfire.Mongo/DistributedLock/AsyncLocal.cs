@@ -1,37 +1,29 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Runtime.Remoting.Messaging;
 
 namespace Hangfire.Mongo.DistributedLock
 {
-#if NET45
-
-    using System.Runtime.Remoting.Messaging;
-
     internal class AsyncLocal<T>
     {
-        private readonly string __name;
+        private readonly string _name;
 
         public AsyncLocal()
         {
-            __name = Guid.NewGuid().ToString();
+            _name = Guid.NewGuid().ToString();
         }
 
         public T Value
         {
             get
             {
-                var value = CallContext.LogicalGetData(__name);
+                var value = CallContext.LogicalGetData(_name);
                 return value == null ? default(T) : (T)value;
             }
             set
             {
-                CallContext.LogicalSetData(__name, value);
+                CallContext.LogicalSetData(_name, value);
             }
         }
     }
-
-#endif
+    
 }

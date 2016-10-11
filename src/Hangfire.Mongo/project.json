@@ -11,7 +11,14 @@
   },
 
   "frameworks": {
-    "netstandard1.5": {},
+    "netstandard1.5": {
+      "buildOptions": {
+        "compile": {
+          "excludeFiles": "DistributedLock/AsyncLocal.cs"
+        }
+      }
+    },
+
     "net451": {
       "buildOptions": {
         "define": [ "NET45" ]

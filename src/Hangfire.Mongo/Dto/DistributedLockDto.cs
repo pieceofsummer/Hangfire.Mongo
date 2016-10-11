@@ -11,6 +11,9 @@ namespace Hangfire.Mongo.Dto
         public string Resource { get; set; }
 
         [BsonRequired]
+        public string Owner { get; set; }
+
+        [BsonRequired]
         public DateTime ExpireAt { get; set; }
 
     }
