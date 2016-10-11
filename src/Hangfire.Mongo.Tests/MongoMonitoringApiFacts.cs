@@ -8,6 +8,7 @@ using Hangfire.States;
 using Hangfire.Storage;
 using Xunit;
 using MongoDB.Bson;
+using System.Collections.Generic;
 
 namespace Hangfire.Mongo.Tests
 {
@@ -210,7 +211,9 @@ namespace Hangfire.Mongo.Tests
             {
                 Name = stateName,
                 CreatedAt = createdAt,
-                Data = stateName == EnqueuedState.StateName ? $"{{ 'EnqueuedAt': '{createdAt:o}' }}" : "{}",
+                Data = stateName == EnqueuedState.StateName 
+                    ? new Dictionary<string, string> { ["EnqueuedAt"] = createdAt.ToString("o") } 
+                    : null,
                 JobId = jobId,
             };
             database.State.InsertOne(jobState);
@@ -220,11 +223,11 @@ namespace Hangfire.Mongo.Tests
                 Id = jobId,
                 InvocationData = JobHelper.ToJson(InvocationData.Serialize(job)),
                 Arguments = "['\\\"Arguments\\\"']",
-                StateName = stateName,
+                StateId = jobState.Id,
+                StateName = jobState.Name,
                 StateReason = jobState.Reason,
                 StateData = jobState.Data,
                 CreatedAt = createdAt,
-                StateId = jobState.Id,
                 Queue = DefaultQueue,
                 FetchedAt = stateName == FetchedStateName ? (DateTime?)createdAt : null
             };

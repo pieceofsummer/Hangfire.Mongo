@@ -114,7 +114,7 @@ namespace Hangfire.Mongo
                     Name = state.Name,
                     Reason = state.Reason,
                     CreatedAt = ServerTime,
-                    Data = JobHelper.ToJson(state.SerializeData())
+                    Data = state.SerializeData()
                 };
 
                 x.State.InsertOne(stateDto);
@@ -122,8 +122,8 @@ namespace Hangfire.Mongo
                 x.Job.UpdateOne(
                     Builders<JobDto>.Filter.Eq(_ => _.Id, jobId),
                     Builders<JobDto>.Update.Set(_ => _.StateId, stateDto.Id)
-                                           .Set(_ => _.StateName, state.Name)
-                                           .Set(_ => _.StateReason, state.Reason)
+                                           .Set(_ => _.StateName, stateDto.Name)
+                                           .Set(_ => _.StateReason, stateDto.Reason)
                                            .Set(_ => _.StateData, stateDto.Data));
             });
         }
@@ -139,7 +139,7 @@ namespace Hangfire.Mongo
                 Name = state.Name,
                 Reason = state.Reason,
                 CreatedAt = ServerTime,
-                Data = JobHelper.ToJson(state.SerializeData())
+                Data = state.SerializeData()
             }));
         }
 
@@ -256,16 +256,14 @@ namespace Hangfire.Mongo
 
             QueueCommand(x =>
             {
-                var ids = x.List.AsQueryable()
-                    .Where(_ => _.Key == key)
-                    .OrderByDescending(_ => _.Id)
-                    .Select(_ => _.Id)
+                var ids = x.List
+                    .Find(_ => _.Key == key)
+                    .SortByDescending(_ => _.Id)
+                    .Project(_ => _.Id)
                     .ToList() // materialize
                     .Where((id, index) => index < keepStartingFrom || index > keepEndingAt);
                 
-                x.List.DeleteMany(
-                    Builders<ListDto>.Filter.Eq(_ => _.Key, key) &
-                    Builders<ListDto>.Filter.In(_ => _.Id, ids));
+                x.List.DeleteMany(_ => _.Key == key && ids.Contains(_.Id));
             });
         }
 
@@ -286,8 +284,7 @@ namespace Hangfire.Mongo
         {
             if (string.IsNullOrEmpty(key)) throw new ArgumentNullException(nameof(key));
 
-            QueueCommand(x => x.Hash.DeleteMany(
-                Builders<HashDto>.Filter.Eq(_ => _.Key, key)));
+            QueueCommand(x => x.Hash.DeleteMany(_ => _.Key == key));
         }
 
         public override void Commit()
@@ -386,8 +383,7 @@ namespace Hangfire.Mongo
         {
             if (string.IsNullOrEmpty(key)) throw new ArgumentNullException(nameof(key));
 
-            QueueCommand(x => x.Set.DeleteMany(
-                Builders<SetDto>.Filter.Eq(_ => _.Key, key)));
+            QueueCommand(x => x.Set.DeleteMany(_ => _.Key == key));
         }
     }
 }

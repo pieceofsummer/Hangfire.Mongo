@@ -156,7 +156,7 @@ namespace Hangfire.Mongo.Tests
                 Assert.Equal("State", jobState.Name);
                 Assert.Equal("Reason", jobState.Reason);
                 Assert.NotNull(jobState.CreatedAt);
-                Assert.Equal("{\"Name\":\"Value\"}", jobState.Data);
+                Assert.Equal("Value", jobState.Data.TryGetValue("Name"));
             });
         }
 
@@ -185,14 +185,14 @@ namespace Hangfire.Mongo.Tests
 
                 var testJob = GetTestJob(database, jobId);
                 Assert.Null(testJob.StateName);
-                Assert.Equal(null, testJob.StateId);
+                Assert.Null(testJob.StateId);
 
                 StateDto jobState = database.State.AsQueryable().Single();
                 Assert.Equal(jobId, jobState.JobId);
                 Assert.Equal("State", jobState.Name);
                 Assert.Equal("Reason", jobState.Reason);
                 Assert.NotNull(jobState.CreatedAt);
-                Assert.Equal("{\"Name\":\"Value\"}", jobState.Data);
+                Assert.Equal("Value", jobState.Data.TryGetValue("Name"));
             });
         }
 

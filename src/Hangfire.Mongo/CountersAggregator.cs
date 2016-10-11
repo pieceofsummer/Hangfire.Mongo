@@ -58,9 +58,8 @@ namespace Hangfire.Mongo
             {
                 HangfireDbContext database = storageConnection.Database;
 
-                var stats = database.Counter.AsQueryable()
-                    .GroupBy(_ => _.Key)
-                    .Select(g => new
+                var stats = database.Counter.Aggregate()
+                    .Group(_ => _.Key, g => new
                     {
                         Key = g.Key,
                         // Hangfire's collections shouldn't be sharded!

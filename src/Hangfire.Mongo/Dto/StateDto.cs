@@ -1,6 +1,7 @@
 ﻿using System;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using System.Collections.Generic;
 
 namespace Hangfire.Mongo.Dto
 {
@@ -18,12 +19,12 @@ namespace Hangfire.Mongo.Dto
 
         [BsonIgnoreIfNull]
         public string Reason { get; set; }
+        
+        [BsonIgnoreIfNull]
+        public IDictionary<string, string> Data { get; set; }
 
         [BsonRequired]
         public DateTime CreatedAt { get; set; }
-
-        [BsonIgnoreIfNull]
-        public string Data { get; set; }
 
         [BsonIgnoreIfNull]
         public DateTime? ExpireAt { get; set; }

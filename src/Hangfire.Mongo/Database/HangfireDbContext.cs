@@ -2,21 +2,25 @@
 using Hangfire.Mongo.Dto;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using System.Linq.Expressions;
 using MongoDB.Driver.Core.Configuration;
 using MongoDB.Driver.Core.Events;
 using System.Diagnostics;
+using System.Linq;
+using Hangfire.Logging;
+using System.Collections.Concurrent;
 
 namespace Hangfire.Mongo.Database
 {
-	/// <summary>
-	/// Represents Mongo database context for Hangfire
-	/// </summary>
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1063:ImplementIDisposableCorrectly")]
+    /// <summary>
+    /// Represents Mongo database context for Hangfire
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1063:ImplementIDisposableCorrectly")]
 	public class HangfireDbContext : IDisposable
     {
-        private const int RequiredSchemaVersion = 6;
+        private static readonly ILog _logger = LogProvider.For<HangfireDbContext>();
 
+        private const int RequiredSchemaVersion = 6;
+        
         private readonly string _prefix;
 
         internal IMongoDatabase Database { get; private set; }
@@ -49,17 +53,9 @@ namespace Hangfire.Mongo.Database
             Database = client.GetDatabase(databaseName);
 
 			ConnectionId = Guid.NewGuid().ToString();
+            
+            Init();
 		}
-
-        /// <summary>
-        /// Constructs context with existing Mongo database connection
-        /// </summary>
-        /// <param name="database">Database connection</param>
-        public HangfireDbContext(IMongoDatabase database)
-        {
-            Database = database;
-            ConnectionId = Guid.NewGuid().ToString();
-        }
         
         private void ClasterBuilderCallback(ClusterBuilder builder)
         {
@@ -67,10 +63,13 @@ namespace Hangfire.Mongo.Database
             builder.Subscribe<CommandSucceededEvent>(OnCommandSucceeded);
             builder.Subscribe<CommandFailedEvent>(OnCommandFailed);
         }
-
+        
         private void OnCommandStarted(CommandStartedEvent e)
         {
-            Debug.WriteLineIf(e.OperationId.HasValue, $"< [{e.OperationId}] {e.CommandName}: {e.Command}");
+            if (e.OperationId.HasValue)
+            {
+                _logger.TraceFormat("< [{0}] {1}: {2}", e.OperationId, e.CommandName, e.Command);
+            }
         }
 
         private void OnCommandSucceeded(CommandSucceededEvent e)
@@ -78,7 +77,10 @@ namespace Hangfire.Mongo.Database
             // capture local time as soon as reply is received to minimize errors
             var now = DateTime.UtcNow;
 
-            Debug.WriteLineIf(e.OperationId.HasValue, $"> [{e.OperationId}] {e.CommandName} OK in {e.Duration}: {e.Reply}");
+            if (e.OperationId.HasValue)
+            {
+                _logger.TraceFormat("> [{0}] {1} SUCC in {2}", e.OperationId, e.CommandName, e.Duration);
+            }
             
             if (e.CommandName == "isMaster")
             {
@@ -92,7 +94,10 @@ namespace Hangfire.Mongo.Database
 
         private void OnCommandFailed(CommandFailedEvent e)
         {
-            Debug.WriteLineIf(e.OperationId.HasValue, $"> [{e.OperationId}] {e.CommandName} ERR in {e.Duration}: {e.Failure}");
+            if (e.OperationId.HasValue)
+            {
+                _logger.TraceFormat("> [{0}] {1} FAIL in {2}", e.OperationId, e.CommandName, e.Duration);
+            }
         }
 
         #region ServerVersion tracking
@@ -291,29 +296,25 @@ namespace Hangfire.Mongo.Database
         /// </summary>
         public void Init()
         {
-            SchemaDto schema = Schema.Find(new BsonDocument()).FirstOrDefault();
+            Schema.UpdateOne(
+                Builders<SchemaDto>.Filter.Eq(_ => _.Version, RequiredSchemaVersion),
+                Builders<SchemaDto>.Update.Unset("x"), // fake update operation
+                new UpdateOptions() { IsUpsert = true });
 
-            if (schema != null)
+            var schema = Schema.Aggregate()
+                .Group(k => 0, g => new { _id = g.Max(_ => _.Version) }).As<SchemaDto>()
+                .Out(Schema.CollectionNamespace.CollectionName)
+                .Single();
+
+            if (RequiredSchemaVersion < schema.Version)
             {
-                if (RequiredSchemaVersion > schema.Version)
-                {
-                    Schema.DeleteMany(new BsonDocument());
-                    Schema.InsertOne(new SchemaDto { Version = RequiredSchemaVersion });
-                }
-                else if (RequiredSchemaVersion < schema.Version)
-                {
-                    throw new InvalidOperationException(string.Format(
-                        "HangFire current database schema version {0} is newer than the configured MongoStorage schema version {1}. " +
-                        "Please update to the latest HangFire.SqlServer NuGet package.", schema.Version, RequiredSchemaVersion));
-                }
-            }
-            else
-            {
-	            Schema.InsertOne(new SchemaDto {Version = RequiredSchemaVersion});
+                throw new InvalidOperationException(string.Format(
+                    "Current database schema version ({0}) is newer than supported by this package ({1}). " +
+                    "Please update to the latest version of package.", schema.Version, RequiredSchemaVersion));
             }
 
             // create indexes
-            
+
             CreateIndex(Counter, "ix_key", ix => ix.Ascending(_ => _.Key));
             CreateIndex(Hash, "ix_key_field", ix => ix.Ascending(_ => _.Key).Ascending(_ => _.Field), unique: true);
             CreateIndex(Job, "ix_queue_fetchedAt", ix => ix.Ascending(_ => _.Queue).Ascending(_ => _.FetchedAt), sparse: true);
@@ -335,7 +336,7 @@ namespace Hangfire.Mongo.Database
             CreateIndex(Set, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
             CreateIndex(State, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
         }
-        
+
         private void CreateIndex<TEntity>(IMongoCollection<TEntity> collection, string name, Func<IndexKeysDefinitionBuilder<TEntity>, IndexKeysDefinition<TEntity>> configure, 
                                           bool? unique = null, bool? sparse = null, TimeSpan? expireAfter = null)
         {

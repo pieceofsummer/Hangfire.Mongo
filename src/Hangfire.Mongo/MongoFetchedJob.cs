@@ -48,10 +48,13 @@ namespace Hangfire.Mongo
         /// </summary>
         private void UpdateJob(bool requeue)
         {
+            var updateQueueNameAnd = requeue
+                ? Builders<JobDto>.Update.Set(_ => _.Queue, Queue)
+                : Builders<JobDto>.Update.Unset(_ => _.Queue);
+
             _connection.Job.UpdateOne(
                 Builders<JobDto>.Filter.Eq(_ => _.Id, JobId),
-                Builders<JobDto>.Update.Set(_ => _.FetchedAt, null)
-                                       .Set(_ => _.Queue, requeue ? Queue : null));
+                updateQueueNameAnd.Unset(_ => _.FetchedAt));
         }
 
         /// <summary>

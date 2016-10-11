@@ -1,6 +1,9 @@
 ﻿using System;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Hangfire.Common;
+using Hangfire.Storage;
+using System.Collections.Generic;
 
 namespace Hangfire.Mongo.Dto
 {
@@ -24,17 +27,17 @@ namespace Hangfire.Mongo.Dto
 
         #region Job state
 
-        [BsonIgnoreIfNull, BsonRepresentation(BsonType.ObjectId)]
+        [BsonRequired, BsonRepresentation(BsonType.ObjectId)]
         public string StateId { get; set; }
 
-        [BsonIgnoreIfNull]
+        [BsonRequired]
         public string StateName { get; set; }
 
         [BsonIgnoreIfNull]
         public string StateReason { get; set; }
 
         [BsonIgnoreIfNull]
-        public string StateData { get; set; }
+        public IDictionary<string, string> StateData { get; set; }
 
         #endregion
 
@@ -47,5 +50,25 @@ namespace Hangfire.Mongo.Dto
         public DateTime? FetchedAt { get; set; }
 
         #endregion
+        
+        public static Job Deserialize(string invocationData, string arguments)
+        {
+            if (string.IsNullOrEmpty(invocationData))
+                return null;
+
+            var data = JobHelper.FromJson<InvocationData>(invocationData);
+            data.Arguments = arguments;
+
+            try
+            {
+                return data.Deserialize();
+            }
+            catch (JobLoadException)
+            {
+                return null;
+            }
+        }
+
+        public Job Deserialize() => Deserialize(InvocationData, Arguments);
     }
 }

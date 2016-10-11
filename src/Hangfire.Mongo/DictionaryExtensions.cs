@@ -17,10 +17,8 @@ namespace Hangfire.Mongo
         /// <returns>Value for specified <paramref name="key"/>, or <paramref name="defaultValue"/> if no such key present.</returns>
         public static TValue TryGetValue<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, TValue defaultValue = default(TValue))
         {
-            if (dict == null) throw new ArgumentNullException(nameof(dict));
-
             TValue value;
-            if (!dict.TryGetValue(key, out value))
+            if (dict == null || !dict.TryGetValue(key, out value))
                 value = defaultValue;
 
             return value;
@@ -37,10 +35,8 @@ namespace Hangfire.Mongo
         /// <returns>Value for specified <paramref name="key"/>, or result of <paramref name="defaultValueFactory"/> if no such key present.</returns>
         public static TValue TryGetValue<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<TKey, TValue> defaultValueFactory)
         {
-            if (dict == null) throw new ArgumentNullException(nameof(dict));
-
             TValue value;
-            if (!dict.TryGetValue(key, out value))
+            if (dict == null || !dict.TryGetValue(key, out value))
                 value = defaultValueFactory(key);
 
             return value;
@@ -57,10 +53,8 @@ namespace Hangfire.Mongo
         /// <returns>Value for specified <paramref name="key"/>, or result of <paramref name="defaultValueFactory"/> if no such key present.</returns>
         public static TValue TryGetValue<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<IDictionary<TKey, TValue>, TKey, TValue> defaultValueFactory)
         {
-            if (dict == null) throw new ArgumentNullException(nameof(dict));
-
             TValue value;
-            if (!dict.TryGetValue(key, out value))
+            if (dict == null || !dict.TryGetValue(key, out value))
                 value = defaultValueFactory(dict, key);
 
             return value;

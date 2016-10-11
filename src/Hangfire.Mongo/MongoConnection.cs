@@ -135,9 +135,9 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(name))
                 throw new ArgumentNullException(nameof(name));
 
-            return Database.JobParameter.AsQueryable()
-                .Where(_ => _.JobId == jobId && _.Name == name)
-                .Select(_ => _.Value)
+            return Database.JobParameter
+                .Find(_ => _.JobId == jobId && _.Name == name)
+                .Project(_ => _.Value)
                 .FirstOrDefault();
         }
 
@@ -146,27 +146,35 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(jobId))
                 throw new ArgumentNullException(nameof(jobId));
 
-            var jobData = Database.Job.AsQueryable()
-                .Where(_ => _.Id == jobId)
+            var jobData = Database.Job
+                .Find(_ => _.Id == jobId)
+                .Project(_ => new { _.Id, _.CreatedAt, _.StateName, _.InvocationData, _.Arguments })
                 .SingleOrDefault();
 
             if (jobData == null)
                 return null;
 
-            // TODO: conversion exception could be thrown.
-            var invocationData = JobHelper.FromJson<InvocationData>(jobData.InvocationData);
-            invocationData.Arguments = jobData.Arguments;
-
             Job job = null;
             JobLoadException loadException = null;
 
-            try
+            if (!string.IsNullOrEmpty(jobData.InvocationData))
             {
-                job = invocationData.Deserialize();
+                // TODO: conversion exception could be thrown.
+                var invocationData = JobHelper.FromJson<InvocationData>(jobData.InvocationData);
+                invocationData.Arguments = jobData.Arguments;
+                
+                try
+                {
+                    job = invocationData.Deserialize();
+                }
+                catch (JobLoadException ex)
+                {
+                    loadException = ex;
+                }
             }
-            catch (JobLoadException ex)
+            else
             {
-                loadException = ex;
+                loadException = new JobLoadException("Empty InvocationData", null);
             }
 
             return new JobData
@@ -183,19 +191,15 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(jobId))
                 throw new ArgumentNullException(nameof(jobId));
 
-            var job = Database.Job.AsQueryable()
-                .Where(_ => _.Id == jobId)
+            return Database.Job
+                .Find(_ => _.Id == jobId)
+                .Project(_ => new StateData
+                {
+                    Name = _.StateName,
+                    Reason = _.StateReason,
+                    Data = _.StateData
+                })
                 .SingleOrDefault();
-
-            if (job == null || job.StateId == null)
-                return null;
-            
-            return new StateData
-            {
-                Name = job.StateName,
-                Reason = job.StateReason,
-                Data = JobHelper.FromJson<Dictionary<string, string>>(job.StateData)
-            };
         }
 
         public override void AnnounceServer(string serverId, ServerContext context)
@@ -236,11 +240,11 @@ namespace Hangfire.Mongo
 
         public override int RemoveTimedOutServers(TimeSpan timeOut)
         {
-            if (timeOut.Duration() != timeOut)
+            if (timeOut < TimeSpan.Zero)
                 throw new ArgumentException("The `timeOut` value must be positive.", nameof(timeOut));
 
             return (int)Database.Server
-                .DeleteMany(Builders<ServerDto>.Filter.Lt(_ => _.Heartbeat, Database.GetServerTimeUtc().Add(timeOut.Negate())))
+                .DeleteMany(_ => _.Heartbeat < Database.GetServerTimeUtc() - timeOut)
                 .DeletedCount;
         }
 
@@ -249,10 +253,10 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            return new HashSet<string>(
-                Database.Set.AsQueryable()
-                    .Where(_ => _.Key == key)
-                    .Select(_ => _.Value));
+            return new HashSet<string>(Database.Set
+                .Find(_ => _.Key == key)
+                .Project(_ => _.Value)
+                .ToList());
         }
 
         public override string GetFirstByLowestScoreFromSet(string key, double fromScore, double toScore)
@@ -262,11 +266,11 @@ namespace Hangfire.Mongo
 
             if (toScore < fromScore)
                 throw new ArgumentException($"The `{nameof(toScore)}` value must be higher or equal to the `{nameof(fromScore)}` value.");
-
-            return Database.Set.AsQueryable()
-                .Where(_ => _.Key == key && _.Score >= fromScore && _.Score <= toScore)
-                .OrderBy(_ => _.Score)
-                .Select(_ => _.Value)
+            
+            return Database.Set
+                .Find(_ => _.Key == key && _.Score >= fromScore && _.Score <= toScore)
+                .SortBy(_ => _.Score)
+                .Project(_ => _.Value)
                 .FirstOrDefault();
         }
 
@@ -297,8 +301,9 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            var result = Database.Hash.AsQueryable()
-                .Where(_ => _.Key == key)
+            var result = Database.Hash
+                .Find(_ => _.Key == key)
+                .Project(_ => new { _.Field, _.Value })
                 .ToDictionary(_ => _.Field, _ => _.Value);
 
             return result.Any() ? result : null;
@@ -308,10 +313,8 @@ namespace Hangfire.Mongo
         {
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
-
-            return Database.Set.AsQueryable()
-                .Where(_ => _.Key == key)
-                .Count();
+            
+            return Database.Set.Count(_ => _.Key == key);
         }
 
         public override List<string> GetRangeFromSet(string key, int startingFrom, int endingAt)
@@ -322,11 +325,11 @@ namespace Hangfire.Mongo
             if (endingAt < startingFrom)
                 throw new ArgumentException($"The `{nameof(endingAt)}` value must be higher or equal to the `{nameof(startingFrom)}` value.");
 
-            return Database.Set.AsQueryable()
-                .Where(_ => _.Key == key)
+            return Database.Set
+                .Find(_ => _.Key == key)
+                .Project(dto => dto.Value)
                 .Skip(startingFrom)
-                .Select(dto => dto.Value)
-                .Take(endingAt - startingFrom + 1) // inclusive -- ensure the last element is included
+                .Limit(endingAt - startingFrom + 1) // inclusive -- ensure the last element is included
                 .ToList();
         }
 
@@ -335,14 +338,13 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            var min = Database.Set.AsQueryable()
-                .Where(_ => _.Key == key && _.ExpireAt.HasValue)
-                .OrderBy(_ => _.ExpireAt)
-                .Select(_ => _.ExpireAt)
+            var min = Database.Set
+                .Find(_ => _.Key == key && _.ExpireAt.HasValue)
+                .SortBy(_ => _.ExpireAt)
+                .Project(_ => _.ExpireAt)
                 .FirstOrDefault();
-                //.Min(_ => _.ExpireAt);
 
-            return min.HasValue ? (min.Value - DateTime.UtcNow) : NoTtl;
+            return min.HasValue ? (min.Value - Database.GetServerTimeUtc()) : NoTtl;
         }
 
         public override long GetCounter(string key)
@@ -350,18 +352,17 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            var count = Database.Counter.AsQueryable()
-                .Where(_ => _.Key == key)
-                .GroupBy(_ => _.Key)
-                .Select(g => g.Sum(_ => _.Value))
-                .FirstOrDefault();
+            var counters = Database.Counter.Aggregate()
+                .Match(_ => _.Key == key)
+                .Group(_ => 0, g => new { Value = g.Sum(_ => _.Value) })
+                .SingleOrDefault();
 
-            var aggregatedCount = Database.AggregatedCounter.AsQueryable()
-                .Where(_ => _.Key == key)
-                .Select(_ => _.Value)
-                .FirstOrDefault();
+            var aggregatedCount = Database.AggregatedCounter
+                .Find(_ => _.Key == key)
+                .Project(_ => _.Value)
+                .SingleOrDefault();
             
-            return count + aggregatedCount;
+            return (counters != null ? counters.Value : 0) + aggregatedCount;
         }
 
         public override long GetHashCount(string key)
@@ -369,9 +370,7 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            return Database.Hash.AsQueryable()
-                .Where(_ => _.Key == key)
-                .Count();
+            return Database.Hash.Count(_ => _.Key == key);
         }
 
         public override TimeSpan GetHashTtl(string key)
@@ -379,14 +378,13 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            var min = Database.Hash.AsQueryable()
-                .Where(_ => _.Key == key && _.ExpireAt.HasValue)
-                .OrderBy(_ => _.ExpireAt)
-                .Select(_ => _.ExpireAt)
+            var min = Database.Hash
+                .Find(_ => _.Key == key && _.ExpireAt.HasValue)
+                .SortBy(_ => _.ExpireAt)
+                .Project(_ => _.ExpireAt)
                 .FirstOrDefault();
-                //.Min(_ => _.ExpireAt);
 
-            return min.HasValue ? (min.Value - DateTime.UtcNow) : NoTtl;
+            return min.HasValue ? (min.Value - Database.GetServerTimeUtc()) : NoTtl;
         }
 
         public override string GetValueFromHash(string key, string name)
@@ -397,9 +395,9 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(name))
                 throw new ArgumentNullException(nameof(name));
 
-            return Database.Hash.AsQueryable()
-                .Where(_ => _.Key == key && _.Field == name)
-                .Select(_ => _.Value)
+            return Database.Hash
+                .Find(_ => _.Key == key && _.Field == name)
+                .Project(_ => _.Value)
                 .FirstOrDefault();
         }
 
@@ -408,9 +406,7 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            return Database.List.AsQueryable()
-                .Where(_ => _.Key == key)
-                .Count();
+            return Database.List.Count(_ => _.Key == key);
         }
 
         public override TimeSpan GetListTtl(string key)
@@ -418,14 +414,13 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            var min = Database.List.AsQueryable()
-                .Where(_ => _.Key == key && _.ExpireAt.HasValue)
-                .OrderBy(_ => _.ExpireAt)
-                .Select(_ => _.ExpireAt)
+            var min = Database.List
+                .Find(_ => _.Key == key && _.ExpireAt.HasValue)
+                .SortBy(_ => _.ExpireAt)
+                .Project(_ => _.ExpireAt)
                 .FirstOrDefault();
-                //.Min(_ => _.ExpireAt);
 
-            return min.HasValue ? (min.Value - DateTime.UtcNow) : NoTtl;
+            return min.HasValue ? (min.Value - Database.GetServerTimeUtc()) : NoTtl;
         }
 
         public override List<string> GetRangeFromList(string key, int startingFrom, int endingAt)
@@ -433,11 +428,11 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            return Database.List.AsQueryable()
-                .Where(_ => _.Key == key)
+            return Database.List
+                .Find(_ => _.Key == key)
+                .Project(_ => _.Value)
                 .Skip(startingFrom)
-                .Select(_ => _.Value)
-                .Take(endingAt - startingFrom + 1) // inclusive -- ensure the last element is included
+                .Limit(endingAt - startingFrom + 1) // inclusive -- ensure the last element is included
                 .ToList();
         }
 
@@ -446,9 +441,9 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentNullException(nameof(key));
 
-            return Database.List.AsQueryable()
-                .Where(_ => _.Key == key)
-                .Select(_ => _.Value)
+            return Database.List
+                .Find(_ => _.Key == key)
+                .Project(_ => _.Value)
                 .ToList();
         }
     }

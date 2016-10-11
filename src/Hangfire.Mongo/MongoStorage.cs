@@ -24,6 +24,8 @@ namespace Hangfire.Mongo
         private readonly string _databaseName;
         private readonly MongoClientSettings _mongoClientSettings;
         private readonly MongoStorageOptions _options;
+        private readonly MongoMonitoringApi _monitoringApi;
+        private readonly MongoConnection _storageConnection;
 
         /// <summary>
         /// Constructs Job Storage by database connection string and name
@@ -57,8 +59,12 @@ namespace Hangfire.Mongo
             _options = options;
 
             Connection = new HangfireDbContext(connectionString, databaseName, options.Prefix);
+
             var defaultQueueProvider = new MongoJobQueueProvider(this, options);
             QueueProviders = new PersistentJobQueueProviderCollection(defaultQueueProvider);
+
+            _monitoringApi = new MongoMonitoringApi(Connection, QueueProviders);
+            _storageConnection = new MongoConnection(Connection, _options, QueueProviders);
         }
 
         /// <summary>
@@ -93,8 +99,12 @@ namespace Hangfire.Mongo
             _options = options;
 
             Connection = new HangfireDbContext(mongoClientSettings, databaseName, options.Prefix);
+
             var defaultQueueProvider = new MongoJobQueueProvider(this, options);
             QueueProviders = new PersistentJobQueueProviderCollection(defaultQueueProvider);
+
+            _monitoringApi = new MongoMonitoringApi(Connection, QueueProviders);
+            _storageConnection = new MongoConnection(Connection, _options, QueueProviders);
         }
         
         /// <summary>
@@ -111,19 +121,13 @@ namespace Hangfire.Mongo
         /// Returns Monitoring API object
         /// </summary>
         /// <returns>Monitoring API object</returns>
-        public override IMonitoringApi GetMonitoringApi()
-        {
-            return new MongoMonitoringApi(Connection, QueueProviders);
-        }
+        public override IMonitoringApi GetMonitoringApi() => _monitoringApi;
 
         /// <summary>
         /// Returns storage connection
         /// </summary>
         /// <returns>Storage connection</returns>
-        public override IStorageConnection GetConnection()
-        {
-            return new MongoConnection(Connection, _options, QueueProviders);
-        }
+        public override IStorageConnection GetConnection() => _storageConnection;
 
         /// <summary>
         /// Returns collection of server components
@@ -162,7 +166,9 @@ namespace Hangfire.Mongo
         /// <returns>Database context</returns>
         public HangfireDbContext CreateAndOpenConnection()
         {
-            return _connectionString != null ? new HangfireDbContext(_connectionString, _databaseName, _options.Prefix) : new HangfireDbContext(_mongoClientSettings, _databaseName, _options.Prefix);
+            return _connectionString != null 
+                ? new HangfireDbContext(_connectionString, _databaseName, _options.Prefix) 
+                : new HangfireDbContext(_mongoClientSettings, _databaseName, _options.Prefix);
         }
 
         /// <summary>
@@ -174,11 +180,11 @@ namespace Hangfire.Mongo
             string obscuredConnectionString = "mongodb://";
             if (_connectionString != null)
             {
-                obscuredConnectionString = ConnectionStringCredentials.Replace(_connectionString, "mongodb://<username>:<password>@");
+                obscuredConnectionString = ConnectionStringCredentials.Replace(_connectionString, "mongodb://");
             }
             else if (_mongoClientSettings != null && _mongoClientSettings.Server != null)
             {
-                obscuredConnectionString = $"mongodb://<username>:<password>@{_mongoClientSettings.Server.Host}:{_mongoClientSettings.Server.Port}";
+                obscuredConnectionString = $"mongodb://{_mongoClientSettings.Server.Host}:{_mongoClientSettings.Server.Port}";
             }
             return $"Connection string: {obscuredConnectionString}, database name: {_databaseName}, prefix: {_options.Prefix}";
 
@@ -189,6 +195,7 @@ namespace Hangfire.Mongo
         /// </summary>
         public void Dispose()
         {
+            _storageConnection.Dispose();
             QueueProviders.Dispose();
             Connection.Dispose();
         }

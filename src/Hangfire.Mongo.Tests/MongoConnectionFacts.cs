@@ -266,7 +266,7 @@ namespace Hangfire.Mongo.Tests
                     JobId = jobId,
                     Name = "Name",
                     Reason = "Reason",
-                    Data = JobHelper.ToJson(data),
+                    Data = data,
                     CreatedAt = DateTime.UtcNow
                 };
                 database.State.InsertOne(stateDto);

@@ -76,7 +76,7 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
             _storage.Connection.Job.UpdateOne(
                 Builders<JobDto>.Filter.Eq(_ => _.Id, jobId),
                 Builders<JobDto>.Update.Set(_ => _.Queue, queue)
-                                       .Set(_ => _.FetchedAt, null));
+                                       .Unset(_ => _.FetchedAt));
         }
 
         public void NotifyQueueChanged()
