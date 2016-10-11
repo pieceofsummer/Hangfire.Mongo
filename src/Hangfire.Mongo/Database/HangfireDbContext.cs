@@ -325,29 +325,19 @@ namespace Hangfire.Mongo.Database
 
             // create TTL indexes
 
-            CreateTtlIndex(AggregatedCounter, _ => _.ExpireAt);
-            CreateTtlIndex(Counter, _ => _.ExpireAt);
-            CreateTtlIndex(DistributedLock, _ => _.ExpireAt);
-            CreateTtlIndex(Hash, _ => _.ExpireAt);
-            CreateTtlIndex(Job, _ => _.ExpireAt);
-            CreateTtlIndex(JobParameter, _ => _.ExpireAt);
-            CreateTtlIndex(List, _ => _.ExpireAt);
-            CreateTtlIndex(Set, _ => _.ExpireAt);
-            CreateTtlIndex(State, _ => _.ExpireAt);
+            CreateIndex(AggregatedCounter, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
+            CreateIndex(Counter, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
+            CreateIndex(DistributedLock, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
+            CreateIndex(Hash, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
+            CreateIndex(Job, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
+            CreateIndex(JobParameter, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
+            CreateIndex(List, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
+            CreateIndex(Set, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
+            CreateIndex(State, "ix_ttl", ix => ix.Ascending(_ => _.ExpireAt), sparse: true, expireAfter: TimeSpan.Zero);
         }
-
-        private void CreateTtlIndex<TEntity>(IMongoCollection<TEntity> collection, Expression<Func<TEntity, object>> field)
-        {
-            collection.Indexes.CreateOne(Builders<TEntity>.IndexKeys.Ascending(field), new CreateIndexOptions()
-            {
-                Name = "ix_ttl",
-                ExpireAfter = TimeSpan.Zero,
-                Background = true
-            });
-        }
-
+        
         private void CreateIndex<TEntity>(IMongoCollection<TEntity> collection, string name, Func<IndexKeysDefinitionBuilder<TEntity>, IndexKeysDefinition<TEntity>> configure, 
-                                          bool? unique = null, bool? sparse = null)
+                                          bool? unique = null, bool? sparse = null, TimeSpan? expireAfter = null)
         {
             var keys = configure(Builders<TEntity>.IndexKeys);
 
@@ -356,7 +346,8 @@ namespace Hangfire.Mongo.Database
                 Name = name,
                 Background = true,
                 Unique = unique,
-                Sparse = sparse
+                Sparse = sparse,
+                ExpireAfter = expireAfter
             };
 
             try
