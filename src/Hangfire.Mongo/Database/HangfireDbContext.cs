@@ -7,7 +7,6 @@ using MongoDB.Driver.Core.Events;
 using System.Diagnostics;
 using System.Linq;
 using Hangfire.Logging;
-using System.Collections.Concurrent;
 
 namespace Hangfire.Mongo.Database
 {
@@ -46,6 +45,8 @@ namespace Hangfire.Mongo.Database
 		{
 			_prefix = prefix;
 
+            // setup client
+
             mongoClientSettings.ClusterConfigurator = ClasterBuilderCallback;
 
 			MongoClient client = new MongoClient(mongoClientSettings);
@@ -54,6 +55,33 @@ namespace Hangfire.Mongo.Database
 
 			ConnectionId = Guid.NewGuid().ToString();
             
+            // setup collections
+
+            DistributedLock = Database.GetCollection<DistributedLockDto>(_prefix + ".locks")
+                                      .WithWriteConcern(WriteConcern.WMajority);
+
+            Counter = Database.GetCollection<CounterDto>(_prefix + ".counter");
+
+            AggregatedCounter = Database.GetCollection<AggregatedCounterDto>(_prefix + ".aggregatedcounter");
+
+            Hash = Database.GetCollection<HashDto>(_prefix + ".hash");
+
+            Job = Database.GetCollection<JobDto>(_prefix + ".job");
+
+            JobParameter = Database.GetCollection<JobParameterDto>(_prefix + ".jobParameter");
+
+            List = Database.GetCollection<ListDto>(_prefix + ".list");
+
+            Schema = Database.GetCollection<SchemaDto>(_prefix + ".schema");
+
+            Server = Database.GetCollection<ServerDto>(_prefix + ".server");
+
+            Set = Database.GetCollection<SetDto>(_prefix + ".set");
+
+            State = Database.GetCollection<StateDto>(_prefix + ".state");
+
+            // init (validate schema version, setup indexes, ...)
+
             Init();
 		}
         
@@ -66,22 +94,16 @@ namespace Hangfire.Mongo.Database
         
         private void OnCommandStarted(CommandStartedEvent e)
         {
-            if (e.OperationId.HasValue)
-            {
-                _logger.TraceFormat("< [{0}] {1}: {2}", e.OperationId, e.CommandName, e.Command);
-            }
+            _logger.TraceFormat("< [{0}] {1}: {2}", e.OperationId ?? 0, e.CommandName, e.Command);
         }
 
         private void OnCommandSucceeded(CommandSucceededEvent e)
         {
             // capture local time as soon as reply is received to minimize errors
             var now = DateTime.UtcNow;
-
-            if (e.OperationId.HasValue)
-            {
-                _logger.TraceFormat("> [{0}] {1} SUCC in {2}", e.OperationId, e.CommandName, e.Duration);
-            }
             
+            _logger.TraceFormat("> [{0}] {1} SUCC in {2}", e.OperationId ?? 0, e.CommandName, e.Duration);
+
             if (e.CommandName == "isMaster")
             {
                 UpdateServerTimeFromReply(now, e.Reply);
@@ -94,10 +116,7 @@ namespace Hangfire.Mongo.Database
 
         private void OnCommandFailed(CommandFailedEvent e)
         {
-            if (e.OperationId.HasValue)
-            {
-                _logger.TraceFormat("> [{0}] {1} FAIL in {2}", e.OperationId, e.CommandName, e.Duration);
-            }
+            _logger.TraceFormat("> [{0}] {1} FAIL in {2}", e.OperationId ?? 0, e.CommandName, e.Duration);
         }
 
         #region ServerVersion tracking
@@ -222,74 +241,62 @@ namespace Hangfire.Mongo.Database
         /// <summary>
         /// Mongo database connection identifier
         /// </summary>
-        public string ConnectionId { get; private set; }
-
+        public string ConnectionId { get; }
+        
         /// <summary>
         /// Reference to collection which contains distributed locks
         /// </summary>
-        internal virtual IMongoCollection<DistributedLockDto> DistributedLock
-            => Database.GetCollection<DistributedLockDto>(_prefix + ".locks")
-                               .WithWriteConcern(WriteConcern.WMajority);
+        internal IMongoCollection<DistributedLockDto> DistributedLock { get; }
 
 	    /// <summary>
         /// Reference to collection which contains counters
         /// </summary>
-        internal virtual IMongoCollection<CounterDto> Counter
-            => Database.GetCollection<CounterDto>(_prefix + ".counter");
+        internal IMongoCollection<CounterDto> Counter { get; }
 
 	    /// <summary>
         /// Reference to collection which contains aggregated counters
         /// </summary>
-        internal virtual IMongoCollection<AggregatedCounterDto> AggregatedCounter
-            => Database.GetCollection<AggregatedCounterDto>(_prefix + ".aggregatedcounter");
+        internal IMongoCollection<AggregatedCounterDto> AggregatedCounter { get; }
 
 	    /// <summary>
         /// Reference to collection which contains hashes
         /// </summary>
-        internal virtual IMongoCollection<HashDto> Hash
-            => Database.GetCollection<HashDto>(_prefix + ".hash");
+        internal IMongoCollection<HashDto> Hash { get; }
 
 	    /// <summary>
         /// Reference to collection which contains jobs
         /// </summary>
-        internal virtual IMongoCollection<JobDto> Job
-            => Database.GetCollection<JobDto>(_prefix + ".job");
+        internal IMongoCollection<JobDto> Job { get; }
 
 	    /// <summary>
         /// Reference to collection which contains jobs parameters
         /// </summary>
-        internal virtual IMongoCollection<JobParameterDto> JobParameter
-            => Database.GetCollection<JobParameterDto>(_prefix + ".jobParameter");
+        internal IMongoCollection<JobParameterDto> JobParameter { get; }
         
 	    /// <summary>
         /// Reference to collection which contains lists
         /// </summary>
-        internal virtual IMongoCollection<ListDto> List
-            => Database.GetCollection<ListDto>(_prefix + ".list");
+        internal IMongoCollection<ListDto> List { get; }
 
 	    /// <summary>
         /// Reference to collection which contains schemas
         /// </summary>
-        internal virtual IMongoCollection<SchemaDto> Schema
-            => Database.GetCollection<SchemaDto>(_prefix + ".schema");
+        internal IMongoCollection<SchemaDto> Schema { get; }
 
 	    /// <summary>
         /// Reference to collection which contains servers information
         /// </summary>
-        internal virtual IMongoCollection<ServerDto> Server
-            => Database.GetCollection<ServerDto>(_prefix + ".server");
+        internal IMongoCollection<ServerDto> Server { get; }
 
 	    /// <summary>
         /// Reference to collection which contains sets
         /// </summary>
-        internal virtual IMongoCollection<SetDto> Set
-            => Database.GetCollection<SetDto>(_prefix + ".set");
+        internal IMongoCollection<SetDto> Set { get; }
 
 	    /// <summary>
         /// Reference to collection which contains states
         /// </summary>
-        internal virtual IMongoCollection<StateDto> State
-            => Database.GetCollection<StateDto>(_prefix + ".state");
+        internal IMongoCollection<StateDto> State { get; }
 
 	    /// <summary>
         /// Initializes intial collections schema for Hangfire
