@@ -205,18 +205,13 @@ namespace Hangfire.Mongo
 
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
-
-            var data = new ServerDataDto
-            {
-                WorkerCount = context.WorkerCount,
-                Queues = context.Queues,
-                StartedAt = Database.GetServerTimeUtc()
-            };
-
+            
             Database.Server.UpdateOne(
-                Builders<ServerDto>.Filter.Eq(_ => _.Id, serverId),
-                Builders<ServerDto>.Update.Set(_ => _.Data, JobHelper.ToJson(data))
-                                          .CurrentDate(_ => _.LastHeartbeat),
+                Builders<ServerDto>.Filter.Eq(_ => _.Name, serverId),
+                Builders<ServerDto>.Update.Set(_ => _.WorkerCount, context.WorkerCount)
+                                          .Set(_ => _.Queues, context.Queues)
+                                          .SetOnInsert(_ => _.StartedAt, Database.GetServerTimeUtc())
+                                          .CurrentDate(_ => _.Heartbeat),
                 new UpdateOptions { IsUpsert = true });
         }
 
@@ -225,7 +220,8 @@ namespace Hangfire.Mongo
             if (string.IsNullOrEmpty(serverId))
                 throw new ArgumentNullException(nameof(serverId));
 
-            Database.Server.DeleteOne(Builders<ServerDto>.Filter.Eq(_ => _.Id, serverId));
+            Database.Server.DeleteOne(
+                Builders<ServerDto>.Filter.Eq(_ => _.Name, serverId));
         }
 
         public override void Heartbeat(string serverId)
@@ -234,8 +230,8 @@ namespace Hangfire.Mongo
                 throw new ArgumentNullException(nameof(serverId));
 
             Database.Server.UpdateOne(
-                Builders<ServerDto>.Filter.Eq(_ => _.Id, serverId),
-                Builders<ServerDto>.Update.CurrentDate(_ => _.LastHeartbeat));
+                Builders<ServerDto>.Filter.Eq(_ => _.Name, serverId),
+                Builders<ServerDto>.Update.CurrentDate(_ => _.Heartbeat));
         }
 
         public override int RemoveTimedOutServers(TimeSpan timeOut)
@@ -244,7 +240,7 @@ namespace Hangfire.Mongo
                 throw new ArgumentException("The `timeOut` value must be positive.", nameof(timeOut));
 
             return (int)Database.Server
-                .DeleteMany(Builders<ServerDto>.Filter.Lt(_ => _.LastHeartbeat, Database.GetServerTimeUtc().Add(timeOut.Negate())))
+                .DeleteMany(Builders<ServerDto>.Filter.Lt(_ => _.Heartbeat, Database.GetServerTimeUtc().Add(timeOut.Negate())))
                 .DeletedCount;
         }
 

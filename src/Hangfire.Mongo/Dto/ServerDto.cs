@@ -7,12 +7,18 @@ namespace Hangfire.Mongo.Dto
     internal class ServerDto
     {
         [BsonId]
-        public string Id { get; set; }
-
-        [BsonIgnoreIfNull]
-        public string Data { get; set; }
+        public string Name { get; set; }
+        
+        [BsonRequired]
+        public DateTime Heartbeat { get; set; }
+        
+        [BsonRequired]
+        public DateTime StartedAt { get; set; }
 
         [BsonRequired]
-        public DateTime LastHeartbeat { get; set; }
+        public string[] Queues { get; set; }
+
+        [BsonRequired]
+        public int WorkerCount { get; set; }
     }
 }

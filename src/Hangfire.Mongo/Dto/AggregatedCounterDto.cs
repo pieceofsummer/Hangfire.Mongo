@@ -1,6 +1,5 @@
 using System;
 using MongoDB.Bson.Serialization.Attributes;
-using MongoDB.Bson;
 
 namespace Hangfire.Mongo.Dto
 {

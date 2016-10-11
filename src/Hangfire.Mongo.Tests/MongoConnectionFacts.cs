@@ -154,8 +154,8 @@ namespace Hangfire.Mongo.Tests
                 Assert.Equal(nameof(SampleMethod), job.Method.Name);
                 Assert.Equal("Hello", job.Args[0]);
 
-                Assert.True(databaseJob.ExpireAt > createdAt.AddDays(1).AddMinutes(-1));
-                Assert.True(databaseJob.ExpireAt < createdAt.AddDays(1).AddMinutes(1));
+                Assert.NotNull(databaseJob.ExpireAt);
+                Assert.InRange(databaseJob.ExpireAt.Value, createdAt.AddDays(1).AddMinutes(-1), createdAt.AddDays(1).AddMinutes(1));
 
                 var parameters = database.JobParameter.AsQueryable()
                     .Where(_ => _.JobId == jobId)
@@ -209,8 +209,7 @@ namespace Hangfire.Mongo.Tests
                 Assert.Equal("Succeeded", result.State);
                 Assert.Equal("Arguments", result.Job.Args[0]);
                 Assert.Null(result.LoadException);
-                Assert.True(result.CreatedAt > DateTime.UtcNow.AddMinutes(-1));
-                Assert.True(result.CreatedAt < DateTime.UtcNow.AddMinutes(1));
+                Assert.InRange(result.CreatedAt, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddMinutes(1));
             });
         }
 
@@ -558,9 +557,10 @@ namespace Hangfire.Mongo.Tests
                 connection.AnnounceServer("server", context1);
 
                 var server = database.Server.AsQueryable().Single();
-                Assert.Equal("server", server.Id);
-                Assert.StartsWith("{\"WorkerCount\":4,\"Queues\":[\"critical\",\"default\"],\"StartedAt\":", server.Data);
-                Assert.NotNull(server.LastHeartbeat);
+                Assert.Equal("server", server.Name);
+                Assert.Equal(4, server.WorkerCount);
+                Assert.Equal(new[] { "critical", "default" }, server.Queues);
+                Assert.InRange(server.Heartbeat, database.GetServerTimeUtc().AddMinutes(-1), database.GetServerTimeUtc().AddMinutes(1));
 
                 var context2 = new ServerContext
                 {
@@ -570,8 +570,8 @@ namespace Hangfire.Mongo.Tests
                 connection.AnnounceServer("server", context2);
 
                 var sameServer = database.Server.AsQueryable().Single();
-                Assert.Equal("server", sameServer.Id);
-                Assert.Contains("1000", sameServer.Data);
+                Assert.Equal("server", sameServer.Name);
+                Assert.Equal(1000, sameServer.WorkerCount);
             });
         }
 
@@ -592,21 +592,19 @@ namespace Hangfire.Mongo.Tests
             {
                 database.Server.InsertOne(new ServerDto
                 {
-                    Id = "Server1",
-                    Data = "",
-                    LastHeartbeat = DateTime.UtcNow
+                    Name = "Server1",
+                    Heartbeat = DateTime.UtcNow
                 });
                 database.Server.InsertOne(new ServerDto
                 {
-                    Id = "Server2",
-                    Data = "",
-                    LastHeartbeat = DateTime.UtcNow
+                    Name = "Server2",
+                    Heartbeat = DateTime.UtcNow
                 });
 
                 connection.RemoveServer("Server1");
 
                 var server = database.Server.AsQueryable().Single();
-                Assert.NotEqual("Server1", server.Id, StringComparer.OrdinalIgnoreCase);
+                Assert.NotEqual("Server1", server.Name, StringComparer.OrdinalIgnoreCase);
             });
         }
 
@@ -627,21 +625,19 @@ namespace Hangfire.Mongo.Tests
             {
                 database.Server.InsertOne(new ServerDto
                 {
-                    Id = "server1",
-                    Data = "",
-                    LastHeartbeat = new DateTime(2012, 12, 12, 12, 12, 12, DateTimeKind.Utc)
+                    Name = "server1",
+                    Heartbeat = new DateTime(2012, 12, 12, 12, 12, 12, DateTimeKind.Utc)
                 });
                 database.Server.InsertOne(new ServerDto
                 {
-                    Id = "server2",
-                    Data = "",
-                    LastHeartbeat = new DateTime(2012, 12, 12, 12, 12, 12, DateTimeKind.Utc)
+                    Name = "server2",
+                    Heartbeat = new DateTime(2012, 12, 12, 12, 12, 12, DateTimeKind.Utc)
                 });
 
                 connection.Heartbeat("server1");
 
                 var servers = database.Server.AsQueryable()
-                    .ToDictionary(_ => _.Id, _ => _.LastHeartbeat);
+                    .ToDictionary(_ => _.Name, _ => _.Heartbeat);
 
                 Assert.NotEqual(2012, servers["server1"].Year);
                 Assert.Equal(2012, servers["server2"].Year);
@@ -665,21 +661,19 @@ namespace Hangfire.Mongo.Tests
             {
                 database.Server.InsertOne(new ServerDto
                 {
-                    Id = "server1",
-                    Data = "",
-                    LastHeartbeat = DateTime.UtcNow.AddDays(-1)
+                    Name = "server1",
+                    Heartbeat = DateTime.UtcNow.AddDays(-1)
                 });
                 database.Server.InsertOne(new ServerDto
                 {
-                    Id = "server2",
-                    Data = "",
-                    LastHeartbeat = DateTime.UtcNow.AddHours(-12)
+                    Name = "server2",
+                    Heartbeat = DateTime.UtcNow.AddHours(-12)
                 });
 
                 connection.RemoveTimedOutServers(TimeSpan.FromHours(15));
 
                 var liveServer = database.Server.AsQueryable().Single();
-                Assert.Equal("server2", liveServer.Id);
+                Assert.Equal("server2", liveServer.Name);
             });
         }
 

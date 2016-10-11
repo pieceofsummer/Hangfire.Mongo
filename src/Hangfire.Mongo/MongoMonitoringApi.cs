@@ -8,7 +8,6 @@ using Hangfire.Mongo.PersistentJobQueue;
 using Hangfire.States;
 using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
-using MongoDB.Bson;
 using MongoDB.Driver;
 using ServerDto = Hangfire.Storage.Monitoring.ServerDto;
 
@@ -76,14 +75,13 @@ namespace Hangfire.Mongo
             // ReSharper disable once LoopCanBeConvertedToQuery
             foreach (var server in servers)
             {
-                var data = JobHelper.FromJson<ServerDataDto>(server.Data);
                 result.Add(new ServerDto
                 {
-                    Name = server.Id,
-                    Heartbeat = server.LastHeartbeat,
-                    Queues = data.Queues,
-                    StartedAt = data.StartedAt ?? DateTime.MinValue,
-                    WorkersCount = data.WorkerCount
+                    Name = server.Name,
+                    Heartbeat = server.Heartbeat,
+                    Queues = server.Queues,
+                    StartedAt = server.StartedAt,
+                    WorkersCount = server.WorkerCount
                 });
             }
 
