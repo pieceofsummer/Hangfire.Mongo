@@ -142,7 +142,7 @@ namespace Hangfire.Mongo
 
                 return new JobDetailsDto
                 {
-                    Job = JobDto.Deserialize(jobData.InvocationData, jobData.Arguments),
+                    Job = DeserializeJob(jobData.InvocationData, jobData.Arguments),
                     CreatedAt = jobData.CreatedAt,
                     History = jobHistory,
                     Properties = jobParameters
@@ -202,7 +202,7 @@ namespace Hangfire.Mongo
                 queue, false,
                 job => new EnqueuedJobDto
                 {
-                    Job = job.Deserialize(),
+                    Job = DeserializeJob(job.InvocationData, job.Arguments),
                     State = job.StateName,
                     EnqueuedAt = job.StateName == EnqueuedState.StateName
                         ? JobHelper.DeserializeNullableDateTime(job.StateData.TryGetValue("EnqueuedAt"))
@@ -223,7 +223,7 @@ namespace Hangfire.Mongo
                 queue, true,
                 job => new FetchedJobDto
                 {
-                    Job = job.Deserialize(),
+                    Job = DeserializeJob(job.InvocationData, job.Arguments),
                     State = job.StateName,
                     FetchedAt = job.FetchedAt
                 }));
@@ -237,7 +237,7 @@ namespace Hangfire.Mongo
                 ProcessingState.StateName,
                 job => new ProcessingJobDto
                 {
-                    Job = job.Deserialize(),
+                    Job = DeserializeJob(job.InvocationData, job.Arguments),
                     ServerId = job.StateData.TryGetValue("ServerId") ?? job.StateData.TryGetValue("ServerName"),
                     StartedAt = JobHelper.DeserializeNullableDateTime(job.StateData.TryGetValue("StartedAt")),
                 }));
@@ -251,7 +251,7 @@ namespace Hangfire.Mongo
                 ScheduledState.StateName,
                 job => new ScheduledJobDto
                 {
-                    Job = job.Deserialize(),
+                    Job = DeserializeJob(job.InvocationData, job.Arguments),
                     EnqueueAt = JobHelper.DeserializeDateTime(job.StateData["EnqueueAt"]),
                     ScheduledAt = JobHelper.DeserializeNullableDateTime(job.StateData.TryGetValue("ScheduledAt"))
                 }));
@@ -265,7 +265,7 @@ namespace Hangfire.Mongo
                 SucceededState.StateName,
                 job => new SucceededJobDto
                 {
-                    Job = job.Deserialize(),
+                    Job = DeserializeJob(job.InvocationData, job.Arguments),
                     Result = job.StateData.TryGetValue("Result"),
                     TotalDuration = job.StateData != null && 
                         job.StateData.ContainsKey("PerformanceDuration") && 
@@ -284,7 +284,7 @@ namespace Hangfire.Mongo
                 FailedState.StateName,
                 job => new FailedJobDto
                 {
-                    Job = job.Deserialize(),
+                    Job = DeserializeJob(job.InvocationData, job.Arguments),
                     Reason = job.StateReason,
                     ExceptionDetails = job.StateData.TryGetValue("ExceptionDetails"),
                     ExceptionMessage = job.StateData.TryGetValue("ExceptionMessage"),
@@ -301,7 +301,7 @@ namespace Hangfire.Mongo
                 DeletedState.StateName,
                 job => new DeletedJobDto
                 {
-                    Job = job.Deserialize(),
+                    Job = DeserializeJob(job.InvocationData, job.Arguments),
                     DeletedAt = JobHelper.DeserializeNullableDateTime(job.StateData.TryGetValue("DeletedAt"))
                 }));
         }
@@ -376,6 +376,32 @@ namespace Hangfire.Mongo
             var result = action(_connection);
             return result;
         }
+
+        private IPersistentJobQueueMonitoringApi GetQueueApi(string queueName)
+        {
+            var provider = _queueProviders.GetProvider(queueName);
+            var monitoringApi = provider.GetJobQueueMonitoringApi();
+
+            return monitoringApi;
+        }
+        
+        private static Job DeserializeJob(string invocationData, string arguments)
+        {
+            if (string.IsNullOrEmpty(invocationData))
+                return null;
+
+            var data = JobHelper.FromJson<InvocationData>(invocationData);
+            data.Arguments = arguments;
+
+            try
+            {
+                return data.Deserialize();
+            }
+            catch (JobLoadException)
+            {
+                return null;
+            }
+        }
         
         private static JobList<EnqueuedJobDto> EnqueuedJobs(HangfireDbContext connection, IEnumerable<string> jobIds)
         {
@@ -392,7 +418,7 @@ namespace Hangfire.Mongo
                     job.Id,
                     new EnqueuedJobDto
                     {
-                        Job = job.Deserialize(),
+                        Job = DeserializeJob(job.InvocationData, job.Arguments),
                         State = job.StateName,
                         EnqueuedAt = job.StateName == EnqueuedState.StateName
                         ? JobHelper.DeserializeNullableDateTime(job.StateData.TryGetValue("EnqueuedAt"))
@@ -403,14 +429,6 @@ namespace Hangfire.Mongo
             return new JobList<EnqueuedJobDto>(result);
         }
         
-        private IPersistentJobQueueMonitoringApi GetQueueApi(string queueName)
-        {
-            var provider = _queueProviders.GetProvider(queueName);
-            var monitoringApi = provider.GetJobQueueMonitoringApi();
-
-            return monitoringApi;
-        }
-
         private static JobList<FetchedJobDto> FetchedJobs(HangfireDbContext connection, IEnumerable<string> jobIds)
         {
             var jobs = connection.Job
@@ -426,7 +444,7 @@ namespace Hangfire.Mongo
                     job.Id,
                     new FetchedJobDto
                     {
-                        Job = job.Deserialize(),
+                        Job = DeserializeJob(job.InvocationData, job.Arguments),
                         State = job.StateName,
                         FetchedAt = job.FetchedAt
                     }));
@@ -500,7 +518,7 @@ namespace Hangfire.Mongo
             return count;
         }
 
-        private Dictionary<DateTime, long> GetTimelineStats(HangfireDbContext connection, string type)
+        private static Dictionary<DateTime, long> GetTimelineStats(HangfireDbContext connection, string type)
         {
             var endDate = connection.GetServerTimeUtc().Date;
 
@@ -527,7 +545,7 @@ namespace Hangfire.Mongo
             return result;
         }
 
-        private Dictionary<DateTime, long> GetHourlyTimelineStats(HangfireDbContext connection, string type)
+        private static Dictionary<DateTime, long> GetHourlyTimelineStats(HangfireDbContext connection, string type)
         {
             var endDate = connection.GetServerTimeUtc();
 

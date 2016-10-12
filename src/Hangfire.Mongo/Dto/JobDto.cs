@@ -50,25 +50,5 @@ namespace Hangfire.Mongo.Dto
         public DateTime? FetchedAt { get; set; }
 
         #endregion
-        
-        public static Job Deserialize(string invocationData, string arguments)
-        {
-            if (string.IsNullOrEmpty(invocationData))
-                return null;
-
-            var data = JobHelper.FromJson<InvocationData>(invocationData);
-            data.Arguments = arguments;
-
-            try
-            {
-                return data.Deserialize();
-            }
-            catch (JobLoadException)
-            {
-                return null;
-            }
-        }
-
-        public Job Deserialize() => Deserialize(InvocationData, Arguments);
     }
 }
