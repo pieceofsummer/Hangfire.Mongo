@@ -18,8 +18,6 @@ namespace Hangfire.Mongo
     /// </summary>
     public class MongoStorage : JobStorage, IDisposable
     {
-        private static readonly Regex ConnectionStringCredentials = new Regex("mongodb://(.*?)@", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
         private readonly string _connectionString;
         private readonly string _databaseName;
         private readonly MongoClientSettings _mongoClientSettings;
@@ -176,18 +174,25 @@ namespace Hangfire.Mongo
         /// </summary>
         public override string ToString()
         {
-            // Obscure the username and password for display purposes
-            string obscuredConnectionString = "mongodb://";
             if (_connectionString != null)
             {
-                obscuredConnectionString = ConnectionStringCredentials.Replace(_connectionString, "mongodb://");
-            }
-            else if (_mongoClientSettings != null && _mongoClientSettings.Server != null)
-            {
-                obscuredConnectionString = $"mongodb://{_mongoClientSettings.Server.Host}:{_mongoClientSettings.Server.Port}";
-            }
-            return $"Connection string: {obscuredConnectionString}, database name: {_databaseName}, prefix: {_options.Prefix}";
+                var builder = new MongoUrlBuilder(_connectionString);
 
+                // remove credentials
+                builder.Username = null;
+                builder.Password = null;
+
+                // append database name
+                builder.DatabaseName = _databaseName;
+
+                return builder.ToString();
+            }
+            else if (_mongoClientSettings != null)
+            {
+                return $"mongodb://{string.Join(",", _mongoClientSettings.Servers)}/{_databaseName}";
+            }
+
+            return "mongodb://"; // fallback
         }
 
         /// <summary>
