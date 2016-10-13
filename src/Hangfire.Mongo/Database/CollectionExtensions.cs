@@ -15,8 +15,7 @@ namespace Hangfire.Mongo.Database
         /// <typeparam name="TDocument">Document type</typeparam>
         /// <param name="collection">Collection</param>
         /// <param name="options">Find options</param>
-        public static IFindFluent<TDocument, TDocument> AllDocuments<TDocument>(
-            this IMongoCollection<TDocument> collection, FindOptions options = null)
+        public static IFindFluent<TDocument, TDocument> AllDocuments<TDocument>(this IMongoCollection<TDocument> collection, FindOptions options = null)
         {
             return collection.Find(Builders<TDocument>.Filter.Empty, options);
         }
@@ -41,8 +40,7 @@ namespace Hangfire.Mongo.Database
         /// <param name="aggregate">Aggregated collection</param>
         /// <param name="keySelector">Key selector</param>
         /// <param name="valueSelector">Value selector</param>
-        public static Dictionary<TKey, TValue> ToDictionary<TDocument, TKey, TValue>(this IAggregateFluent<TDocument> aggregate, 
-            Func<TDocument, TKey> keySelector, Func<TDocument, TValue> valueSelector)
+        public static Dictionary<TKey, TValue> ToDictionary<TDocument, TKey, TValue>(this IAggregateFluent<TDocument> aggregate, Func<TDocument, TKey> keySelector, Func<TDocument, TValue> valueSelector)
         {
             return aggregate.ToEnumerable().ToDictionary(keySelector, valueSelector);
         }
@@ -57,8 +55,7 @@ namespace Hangfire.Mongo.Database
         /// <param name="results">Find results</param>
         /// <param name="keySelector">Key selector</param>
         /// <param name="valueSelector">Value selector</param>
-        public static Dictionary<TKey, TValue> ToDictionary<TDocument, TProjection, TKey, TValue>(this IFindFluent<TDocument, TProjection> results,
-            Func<TProjection, TKey> keySelector, Func<TProjection, TValue> valueSelector)
+        public static Dictionary<TKey, TValue> ToDictionary<TDocument, TProjection, TKey, TValue>(this IFindFluent<TDocument, TProjection> results, Func<TProjection, TKey> keySelector, Func<TProjection, TValue> valueSelector)
         {
             return results.ToEnumerable().ToDictionary(keySelector, valueSelector);
         }

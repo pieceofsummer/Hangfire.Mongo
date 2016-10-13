@@ -304,6 +304,7 @@ namespace Hangfire.Mongo.Tests
 
                 var result = connection.GetJobData(jobId);
 
+                Assert.NotNull(result);
                 Assert.NotNull(result.LoadException);
             });
         }

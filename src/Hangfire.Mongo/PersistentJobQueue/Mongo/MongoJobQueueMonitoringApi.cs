@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using MongoDB.Driver;
-using MongoDB.Driver.Linq;
-using Hangfire.Mongo.Dto;
 
 namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 {
@@ -21,24 +19,22 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 
             _storage = storage;
         }
-
+        
         public IEnumerable<string> GetQueues()
         {
             return _storage.Connection.Job
-                .Distinct(_ => _.Queue, 
-                          Builders<JobDto>.Filter.Exists(_ => _.Queue, true) &
-                          Builders<JobDto>.Filter.Ne(_ => _.Queue, null))
+                .Distinct(Q.DistinctJobQueue, Q.AllJobsWithQueueName)
                 .ToList();
         }
 
         public IEnumerable<string> GetEnqueuedJobIds(string queue, int from, int perPage)
         {
             return _storage.Connection.Job
-                .Find(_ => _.Queue == queue && _.FetchedAt == null)
-                .SortBy(_ => _.Id)
+                .Find(Q.FindJobsInQueue(queue) & Q.OnlyEnqueuedJobs)
+                .Sort(Q.OrderJobById)
                 .Skip(from)
                 .Limit(perPage)
-                .Project(_ => _.Id)
+                .Project(Q.SelectJobId)
                 .ToList();
         }
 
@@ -47,23 +43,19 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
             // TODO: Hangfire.SqlServer has deprecated dividing queue into enqueued/fetched jobs, probably we should too
 
             return _storage.Connection.Job
-                .Find(_ => _.Queue == queue && _.FetchedAt != null)
-                .SortBy(_ => _.Id)
+                .Find(Q.FindJobsInQueue(queue) & Q.OnlyFetchedJobs)
+                .Sort(Q.OrderJobById)
                 .Skip(from)
                 .Limit(perPage)
-                .Project(_ => _.Id)
+                .Project(Q.SelectJobId)
                 .ToList();
         }
         
         public EnqueuedAndFetchedCountDto GetEnqueuedAndFetchedCount(string queue)
         {
             var result = _storage.Connection.Job.Aggregate()
-                .Match(_ => _.Queue == queue)
-                .Group(_ => 0, g => new
-                {
-                    EnqueuedCount = g.Sum(_ => (int)(_.FetchedAt ?? (object)1)),
-                    TotalCount = g.Count()
-                })
+                .Match(Q.FindJobsInQueue(queue))
+                .Group(Q.CountJobsEnqueuedAndFetched)
                 .FirstOrDefault();
                 
             if (result == null)
@@ -71,8 +63,8 @@ namespace Hangfire.Mongo.PersistentJobQueue.Mongo
 
             return new EnqueuedAndFetchedCountDto()
             {
-                EnqueuedCount = result.EnqueuedCount,
-                FetchedCount = result.TotalCount - result.EnqueuedCount
+                EnqueuedCount = result.Enqueued,
+                FetchedCount = result.Total - result.Enqueued
             };
         }
     }

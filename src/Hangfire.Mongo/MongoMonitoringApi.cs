@@ -10,9 +10,7 @@ using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
 using MongoDB.Driver;
 using ServerDto = Hangfire.Storage.Monitoring.ServerDto;
-using System.Linq.Expressions;
 using MongoDB.Driver.Linq;
-using System.Collections;
 
 namespace Hangfire.Mongo
 {
@@ -21,20 +19,6 @@ namespace Hangfire.Mongo
         private readonly HangfireDbContext _connection;
 
         private readonly PersistentJobQueueProviderCollection _queueProviders;
-
-        private static readonly string[] StatisticsStateNames = new[]
-        {
-            ScheduledState.StateName,
-            EnqueuedState.StateName,
-            FailedState.StateName,
-            ProcessingState.StateName,
-        };
-
-        private static readonly string[] StatisticsCounters = new[]
-        {
-            "stats:succeeded",
-            "stats:deleted"
-        };
 
         public MongoMonitoringApi(HangfireDbContext connection, PersistentJobQueueProviderCollection queueProviders)
         {
@@ -62,9 +46,7 @@ namespace Hangfire.Mongo
                 .ToList();*/
 
             var queues = UseConnection(connection => connection.Job
-                .Distinct(_ => _.Queue,
-                          Builders<JobDto>.Filter.Exists(_ => _.Queue, true) &
-                          Builders<JobDto>.Filter.Ne(_ => _.Queue, null))
+                .Distinct(Q.DistinctJobQueue, Q.AllJobsWithQueueName)
                 .ToList());
 
             var result = new List<QueueWithTopEnqueuedJobsDto>(queues.Count);
@@ -116,28 +98,22 @@ namespace Hangfire.Mongo
             return UseConnection(connection =>
             {
                 var jobData = connection.Job
-                    .Find(_ => _.Id == jobId)
-                    .Project(_ => new { _.Id, _.CreatedAt, _.InvocationData, _.Arguments })
+                    .Find(Q.FindJobById(jobId))
+                    .Project(Q.SelectJobAsPartial)
                     .SingleOrDefault();
 
                 if (jobData == null)
                     return null;
 
                 var jobParameters = connection.JobParameter
-                    .Find(_ => _.JobId == jobData.Id)
-                    .Project(_ => new { _.Name, _.Value })
+                    .Find(Q.FindJobParametersByJobId(jobData.Id))
+                    .Project(Q.SelectJobParameterNameAndValue)
                     .ToDictionary(_ => _.Name, _ => _.Value);
 
                 var jobHistory = connection.State
-                    .Find(_ => _.JobId == jobData.Id)
-                    .SortByDescending(_ => _.CreatedAt)
-                    .Project(_ => new StateHistoryDto
-                    {
-                        StateName = _.Name,
-                        CreatedAt = _.CreatedAt,
-                        Reason = _.Reason,
-                        Data = _.Data
-                    })
+                    .Find(Q.FindStatesByJobId(jobData.Id))
+                    .Sort(Q.OrderStateByCreatedAtDescending)
+                    .Project(Q.SelectStateForHistory)
                     .ToList();
 
                 return new JobDetailsDto
@@ -154,37 +130,37 @@ namespace Hangfire.Mongo
         {
             return UseConnection(connection =>
             {
-                var statesByName = connection.Job.Aggregate()
-                    .Match(_ => StatisticsStateNames.Contains(_.StateName))
-                    .Group(_ => _.StateName, g => new { g.Key, Value = g.Count() })
+                var jobsByStateName = connection.Job.Aggregate()
+                    .Match(Q.AllJobsInScheduledEnqueuedFailedProcessingStates)
+                    .Group(Q.GroupJobsByStateName)
                     .ToDictionary(_ => _.Key, _ => _.Value);
 
                 var countersByKey = connection.Counter.Aggregate()
-                    .Match(_ => StatisticsCounters.Contains(_.Key))
-                    .Group(_ => _.Key, g => new { g.Key, Value = g.Sum(_ => _.Value) })
+                    .Match(Q.SucceededAndDeletedCounters)
+                    .Group(Q.GroupCountersByKey)
                     .ToDictionary(_ => _.Key, _ => _.Value);
 
                 var aggregatedByKey = connection.AggregatedCounter
-                    .Find(_ => StatisticsCounters.Contains(_.Key))
+                    .Find(Q.SucceededAndDeletedAggregatedCounters)
                     .ToDictionary(_ => _.Key, _ => _.Value);
 
                 var stats = new StatisticsDto();
 
-                stats.Enqueued = statesByName.TryGetValue(EnqueuedState.StateName);
-                stats.Failed = statesByName.TryGetValue(FailedState.StateName);
-                stats.Processing = statesByName.TryGetValue(ProcessingState.StateName);
-                stats.Scheduled = statesByName.TryGetValue(ScheduledState.StateName);
+                stats.Enqueued = jobsByStateName.TryGetValue(EnqueuedState.StateName);
+                stats.Failed = jobsByStateName.TryGetValue(FailedState.StateName);
+                stats.Processing = jobsByStateName.TryGetValue(ProcessingState.StateName);
+                stats.Scheduled = jobsByStateName.TryGetValue(ScheduledState.StateName);
                 stats.Servers = connection.Server.Count();
-                stats.Succeeded = aggregatedByKey.TryGetValue(StatisticsCounters[0]) + 
-                                    countersByKey.TryGetValue(StatisticsCounters[0]);
-                stats.Deleted = aggregatedByKey.TryGetValue(StatisticsCounters[1]) + 
-                                  countersByKey.TryGetValue(StatisticsCounters[1]);
-                stats.Recurring = connection.Set.Count(_ => _.Key == "recurring-jobs");
+                stats.Succeeded = aggregatedByKey.TryGetValue(Q.SucceededCounterKey)
+                                  + countersByKey.TryGetValue(Q.SucceededCounterKey);
+                stats.Deleted = aggregatedByKey.TryGetValue(Q.DeletedCounterKey)
+                                + countersByKey.TryGetValue(Q.DeletedCounterKey);
+                stats.Recurring = connection.Set.Count(Q.FindRecurringJobsSet);
 
                 stats.Queues = _queueProviders
                     .SelectMany(x => x.GetJobQueueMonitoringApi().GetQueues())
                     .Count();
-                
+
                 return stats;
             });
         }
@@ -406,7 +382,7 @@ namespace Hangfire.Mongo
         private static JobList<EnqueuedJobDto> EnqueuedJobs(HangfireDbContext connection, IEnumerable<string> jobIds)
         {
             var jobs = connection.Job
-                .Find(_ => jobIds.Contains(_.Id))
+                .Find(Q.FindJobsByIds(jobIds))
                 .ToList();
 
             var result = new List<KeyValuePair<string, EnqueuedJobDto>>(jobs.Count);
@@ -432,7 +408,7 @@ namespace Hangfire.Mongo
         private static JobList<FetchedJobDto> FetchedJobs(HangfireDbContext connection, IEnumerable<string> jobIds)
         {
             var jobs = connection.Job
-                .Find(_ => jobIds.Contains(_.Id))
+                .Find(Q.FindJobsByIds(jobIds))
                 .ToList();
             
             var result = new List<KeyValuePair<string, FetchedJobDto>>(jobs.Count);
@@ -455,18 +431,14 @@ namespace Hangfire.Mongo
 
         private static FilterDefinition<JobDto> GetQueuePredicate(string queue, bool fetched)
         {
-            var builder = Builders<JobDto>.Filter;
-
-            return builder.Eq(_ => _.Queue, queue) & (fetched 
-                ? builder.Ne(_ => _.FetchedAt, null) 
-                : builder.Eq(_ => _.FetchedAt, null));
+            return Q.FindJobsInQueue(queue) & (fetched ? Q.OnlyFetchedJobs : Q.OnlyEnqueuedJobs);
         }
 
         private static JobList<TDto> GetJobsByQueue<TDto>(HangfireDbContext connection, int from, int count, string queue, bool fetched, Func<JobDto, TDto> selector)
         {
             var jobs = connection.Job
                 .Find(GetQueuePredicate(queue, fetched))
-                .SortBy(_ => _.Id)
+                .Sort(Q.OrderJobById)
                 .Skip(from)
                 .Limit(count)
                 .ToList();
@@ -493,8 +465,8 @@ namespace Hangfire.Mongo
         private static JobList<TDto> GetJobsByStateName<TDto>(HangfireDbContext connection, int from, int count, string stateName, Func<JobDto, TDto> selector)
         {
             var jobs = connection.Job
-                .Find(_ => _.StateName == stateName)
-                .SortByDescending(_ => _.Id)
+                .Find(Q.FindJobsInState(stateName))
+                .Sort(Q.OrderJobByIdDescending)
                 .Skip(from)
                 .Limit(count)
                 .ToList();
@@ -514,7 +486,7 @@ namespace Hangfire.Mongo
         
         private static long GetNumberOfJobsByStateName(HangfireDbContext connection, string stateName)
         {
-            var count = connection.Job.Count(_ => _.StateName == stateName);
+            var count = connection.Job.Count(Q.FindJobsInState(stateName));
             return count;
         }
 
@@ -533,7 +505,7 @@ namespace Hangfire.Mongo
             }
             
             var values = connection.AggregatedCounter
-                .Find(_ => keys.Contains(_.Key))
+                .Find(Q.FindAggregatedCountersByKeys(keys))
                 .ToDictionary(x => x.Key, x => x.Value);
 
             var result = new Dictionary<DateTime, long>();
@@ -560,7 +532,7 @@ namespace Hangfire.Mongo
             }
             
             var values = connection.AggregatedCounter
-                .Find(_ => keys.Contains(_.Key))
+                .Find(Q.FindAggregatedCountersByKeys(keys))
                 .ToDictionary(x => x.Key, x => x.Value);
             
             var result = new Dictionary<DateTime, long>();
