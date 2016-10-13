@@ -508,10 +508,15 @@ namespace Hangfire.Mongo
                 .Find(Q.FindAggregatedCountersByKeys(keys))
                 .ToDictionary(x => x.Key, x => x.Value);
 
+            var extras = connection.Counter.Aggregate()
+                .Match(Q.FindCountersByKey(keys[0]))
+                .Group(Q.GroupCountersByKey)
+                .ToDictionary(_ => _.Key, _ => _.Value);
+
             var result = new Dictionary<DateTime, long>();
             for (var i = 0; i < dates.Count; i++)
             {
-                result.Add(dates[i], values.TryGetValue(keys[i]));
+                result.Add(dates[i], values.TryGetValue(keys[i]) + extras.TryGetValue(keys[i]));
             }
 
             return result;
@@ -535,10 +540,15 @@ namespace Hangfire.Mongo
                 .Find(Q.FindAggregatedCountersByKeys(keys))
                 .ToDictionary(x => x.Key, x => x.Value);
             
+            var extras = connection.Counter.Aggregate()
+                .Match(Q.FindCountersByKey(keys[0]))
+                .Group(Q.GroupCountersByKey)
+                .ToDictionary(_ => _.Key, _ => _.Value);
+            
             var result = new Dictionary<DateTime, long>();
             for (var i = 0; i < dates.Count; i++)
             {
-                result.Add(dates[i], values.TryGetValue(keys[i]));
+                result.Add(dates[i], values.TryGetValue(keys[i]) + extras.TryGetValue(keys[i]));
             }
 
             return result;
