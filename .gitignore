@@ -107,4 +107,5 @@ Backup*/
 UpgradeLog*.XML
 
 artifacts/
+project.lock.json
 src/.vs
